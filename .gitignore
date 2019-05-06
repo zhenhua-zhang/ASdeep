@@ -1,3 +1,4 @@
 # Ignore all files and direcotories leading with underscore symbol
 **/_*
 **/.vscode
+**/test/
