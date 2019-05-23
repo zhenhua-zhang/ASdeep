@@ -51,7 +51,7 @@ cycler == 0.10.0
 intervaltree == 3.0.2
 kiwisolver == 1.0.1
 
-# numpy / scipy / pandas / matplotlib / pysam
+# numpy / scipy / pandas / matplotlib / pysam / htseq
 matplotlib == 3.0.3
 numpy == 1.16.2
 pandas == 0.24.2
@@ -60,6 +60,7 @@ pysam == 0.15.2
 pytz == 2019.1
 scipy == 1.2.1
 sortedcontainers == 2.1.0
+htseq == 0.11.2
 
 # Dependencies for pylint
 astroid == 2.2.5

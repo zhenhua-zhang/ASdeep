@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Make parental genomes """
+"""Make matrix"""
 # gonl-100a AC47H5ACXX-3-18 Example
 # 1. get some example data from real dataset
 # 1.1 example.fa
@@ -82,7 +82,7 @@ def parse_variant(variants):  # TODO: check data type of var.pos and var.chr
         (var.chrom, var.pos) : [
             var.chrom, var.pos, var.id, var.ref, var.alts, var.qual, var.info
         ] for var in variants
-    }
+    }  # FIXME: could be duplicated positions
     return record_hash
 
 def matrix_yielder(seq, var_hash, chrom, shift):
@@ -103,10 +103,13 @@ def matrix_yielder(seq, var_hash, chrom, shift):
 
         if len(base) == 2:
             yield TRANS_MATRIX[base]
-        else:
-            print("Not single base: {}".format(base), file=sys.stderr)
+        else:  # TODO: Pipe stderr into a log file
+            print(
+                "Non-single base, will use reference for both alleles: "
+                "{}".format(base), file=sys.stderr
+            )
 
-def make_matrix(inter_hand, seq_hand, var_hand, with_orf=False,
+def make_matrix(inter_hand, seq_hand, var_hand, with_orf=False, contig="1",
                 up_shift=1000, dw_shift=1000, merged=True):
     """Make input matrix"""
     var_header = var_hand.header
@@ -142,7 +145,7 @@ def make_matrix(inter_hand, seq_hand, var_hand, with_orf=False,
         dw_matrix = matrix_yielder(dw_seq, dw_var_hash, contig, dw_start)
 
         # TODO: should yield a merged metrix of upstream and downstream
-        if strand == '-'
+        if strand == '-':
             yield (dw_matrix, up_matrix)
 
         yield (up_matrix, dw_matrix)
@@ -159,8 +162,11 @@ for up_dw_matrix in matrix_pool:
     up_matrix, dw_matrix = up_dw_matrix
     for matrix in up_matrix:
         print(list(matrix))
+
+    for matrix in dw_matrix:
+        print(list(matrix))
+
     break
-    
 
 sequence_hand.close()
 variant_hand.close()
