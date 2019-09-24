@@ -1,11 +1,10 @@
 # Allele-Specific Expression Deep Learning Predictor
 
-## Align `fastq` reads to reference genome
-NOTE: using haplotype information from `GoNL` projects
+## Construct UTR sequence matrix
 
-1. Extract haplotype information
+## Quantify ASE effects from RNA seq results
 
-``` {bash}
-$> hisat2_extract_snps_haplotypes_VCF.py
-```
+## Train deep learning(DL) model using TensorFlow
+
+## Validate the DL model using GTEx
 
