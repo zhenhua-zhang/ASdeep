@@ -61,7 +61,7 @@ def _encode_hap_into_vec(hap):
 def _decode_vec_into_hap(vec, dft="N"):
     return VEC_NT_DICT.get(tuple(vec), dft)
 
-def matrix_factory(seq, var_hash, chrom, shift, target_samples=["gonl-100a"]):
+def matrix_factory(seq, var_hash, chrom, shift, target_samples=["gonl-101a"]):
     # FIXME: `shift` should be determined by strand???
     if not isinstance(var_hash, dict):
         raise NonDictError  # TODO: a concrete sub-class of TypeError
@@ -122,9 +122,24 @@ def make_matrix(inter_hand, seq_hand, var_hand, aln_hand, with_orf=False, contig
         else:
             up_matrix = []
         
-        iv_start, iv_end = start, end
-        iv_seq = seq_hand.fetch(reference=contig, start=iv_start, end=iv_end)
-        iv_aln = aln_hand.fetch(reference=contig, start=iv_start, end=iv_end)
+        iv_start, iv_stop = start, end
+        iv_seq = seq_hand.fetch(reference=contig, start=iv_start, end=iv_stop)
+        iv_vars = var_hand.fetch(contig=contig, start=iv_start, stop=iv_stop, reopen=True)
+        iv_vars_hash = _make_variant_dict(iv_vars)
+
+        iv_pileups = aln_hand.pileup(contig=contig, start=iv_start, stop=iv_stop, min_base_quality=20)
+        
+        for _column in iv_pileups:
+            sequence_per_locus = _column.get_query_sequences(mark_matches=True)
+            ref_pos = _column.reference_pos
+            ref_id = _column.reference_id
+
+            if (contig, iv_start) in iv_vars_hash:
+                print("Ref pos: {}:{}. Also in VCF: {}".format(ref_id, ref_pos, sequence_per_locus))
+
+            if len(set([x.upper() for x in sequence_per_locus])) != 1:
+                print("Ref pos: {}:{}. Only in BAM: {}".format(ref_id, ref_pos, sequence_per_locus))
+        
 
         if dw_shift:
             dw_start = int(end) + 1
@@ -146,7 +161,7 @@ def make_matrix(inter_hand, seq_hand, var_hand, aln_hand, with_orf=False, contig
 
 sequence_hand = ps.FastaFile(fas_file)
 variant_hand = ps.VariantFile(vcf_file, duplicate_filehandle=True)
-alignment_hand = ps.AlignmentFile(bam_file)
+alignment_hand = ps.AlignmentFile(bam_file, "rb", duplicate_filehandle=True)
 interval_hand = ps.TabixFile(gtf_file, parser=ps.asGTF())
 
 matrix_pool = make_matrix(interval_hand, sequence_hand, variant_hand, alignment_hand)
