@@ -5,31 +5,338 @@
 import os
 import sys
 
-import numpy as np
-import pysam as ps
-import pandas as pd
+from argparse import ArgumentParser
 
+import pysam as ps
+
+DNTVEC = [0, 0, 0, 0]  # Base not in ACGTN
+NT2VEC = {"A": [1, 0, 0, 0], "C": [0, 1, 0, 0], "G": [0, 0, 1, 0], "T": [0, 0, 0, 1], "N": [0, 0, 0, 0]}
+VEC2NT = {(1, 0, 0, 0): "A", (0, 1, 0, 0): "C", (0, 0, 1, 0): "G", (0, 0, 0, 1): "T", (0, 0, 0, 0): "N"}
+
+NT2AMB = {
+    "AA": "A", "CC": "C", "GG": "G", "TT": "T", "NN": "N",
+    "AC": "K", "AG": "Y", "AT": "W", "CG": "S", "CT": "R", "GT": "M",
+    "CA": "k", "GA": "y", "TA": "w", "GC": "s", "TC": "r", "TG": "m",
+}
+
+AMB2NT = {
+    "A": "AA", "C": "CC", "G": "GG", "T": "TT", "N": "NN",
+    "K": "AC", "Y": "AG", "W": "AT", "S": "CG", "R": "CT", "M": "GT",
+    "k": "CA", "y": "GA", "w": "TA", "s": "GC", "r": "TC", "m": "TG",
+}
 
 def get_args():
     """Get CLI arguments for current script"""
     parser = ArgumentParser()
     _group = parser.add_argument_group("Input")
-    _group.add_argument("-r", "--reference", type=str, dest="reference", action="store_value", required=True, help="The reference genome in FASTA format. Required")
-    _group.add_argument("-v", "--variants", type=str, dest="variants", action="store_value", required=True, help="The vairants file in VCF format. Required")
-    _group.add_argument("-a", "--annotations", type=str, dest="annotations", action="store_value", required=True, help="The annotations file in GFF / GTF format. Required")
-    _group.add_argument("-s", "--alignments", type=str, dest="alignments", action="store_value", required=True, help="The sequence alignments file in SAM / BAM format. Required")
-    # _group = parser.add_argument_group("Config")
-    # _group = parser.add_argument_group("Output")
+    _group.add_argument(
+        "-r", "--reference", type=str, dest="reference", action="store",
+        required=True, help="Reference genome (FASTA). Required"
+    )
+    _group.add_argument(
+        "-v", "--variants", type=str, dest="variants", action="store",
+        required=True, help="Vairant file (VCF). Required"
+    )
+    _group.add_argument(
+        "-a", "--annotations", type=str, dest="annotations", action="store",
+        required=True, help="Annotation file in (GFF/GTF). Required"
+    )
+    _group.add_argument(
+        "-s", "--alignments", type=str, dest="alignments", action="store",
+        required=True, help="Sequence alignment file (SAM/BAM). Required"
+    )
     return parser
+
 
 class UnknownStrandError(Exception):
     pass
 
+
 class LengthError(Exception):
     pass
 
+
 class NonDictError(Exception):
     pass
+
+
+def _make_variant_dict(variants):
+    record_dict = {(var.chrom, var.pos): var for var in variants}  # Using all filter: PASS / Inaccessibl. FIXME: could be duplicated positionse
+    return record_dict
+
+
+def _parse_sample_genotype(samples, alleles):
+    sample_dict = {key: _decode_vcf_haps(alleles, val.get("GT")) for key, val in samples.items()}
+    return sample_dict
+
+
+def _decode_vcf_haps(alleles, code):
+    return (alleles[code[0]], alleles[code[1]])
+
+
+def _encode_hap_into_vec(hap):
+    return NT2VEC.get(hap, [0, 0, 0, 0])
+
+
+def _decode_vec_into_hap(vec, dft="N"):
+    return VEC2NT.get(tuple(vec), dft)
+
+
+class Binomial(object):
+    pass
+
+
+class BetaBinomial(object):
+    pass
+
+
+class HapReadsCounter(object):
+    """Count reads mapped to haplotypes"""
+
+    def __init__(self, itv_recd, var_hand, aln_hand):
+        self.itv_recd = itv_recd
+        self.var_hand = var_hand
+        self.aln_hand = aln_hand
+
+    def count(self):
+        """Count reads mapped to each haplotype for given genomic interval"""
+        # TODO: perhaps need exon_id as well, e.g. smooth meta-exon
+        end = self.itv_recd.end
+        start = self.itv_recd.start
+        contig = self.itv_recd.contig
+
+        itv_vars = self.var_hand.fetch(contig=contig, start=start, stop=end, reopen=True)
+        itv_vars_hash = _make_variant_dict(itv_vars)
+
+        if itv_vars_hash:
+            gene_id = self.itv_recd.gene_id
+            pileup_seg = self.aln_hand.pileup(contig=contig, start=start, stop=end)
+            for pileup_col in pileup_seg:
+                ref_pos = pileup_col.reference_pos
+                # pileups = pileup_col.pileups
+                qry_bases = pileup_col.get_query_sequences(mark_matches=True, mark_ends=True, add_indels=True)
+                print(gene_id)
+                print(ref_pos)
+                print(qry_bases)
+        else:
+            print("No heterogeous loci in: {}:{}-{}".format(contig, start, end))
+
+    def _beta_binom_test(self):
+        """Do Beta-binomial test on given data"""
+
+    def _binom_test(self):
+        """Do Binomial test on given data"""
+
+    def check_ase(self, mthd="bb"):
+        """Determine whether there is an ASE effects"""
+
+    def concat(self, counter):
+        """Concatenate current counter with another"""
+
+
+class SequenceMatrixFactory(object):
+    """Sequence matrix of regulation region"""
+
+    def __init__(self):
+        self.itv_hand = None
+        self.seq_hand = None
+        self.var_hand = None
+        self.aln_hand = None
+
+    def new(self):
+        """Create a new sequence matrix from given genomic interval, genomic variants"""
+        pass
+
+    def into_narray(self):
+        """Transform the matrix into a numpy"""
+
+    def get_region_string(self):
+        pass
+
+    def get_current_coord(self):
+        """Return the coordination of current sequence matrix"""
+
+    def add_itv_handle(self, itv_file):
+        self.itv_hand = ps.TabixFile(itv_file, parser=ps.asGTF())
+        return self
+
+    def add_seq_handle(self, seq_file):
+        self.seq_hand = ps.FastaFile(seq_file)
+        return self
+
+    def add_var_handle(self, var_file):
+        self.var_hand = ps.VariantFile(var_file, duplicate_filehandle=True)
+        return self
+
+    def add_aln_handle(self, aln_file):
+        self.aln_hand = ps.AlignmentFile(aln_file, "rb", duplicate_filehandle=True)
+        return self
+
+    def close_all_handle(self):
+        if self.itv_hand:
+            self.itv_hand.close()
+
+        if self.seq_hand:
+            self.seq_hand.close()
+
+        if self.var_hand:
+            self.var_hand.close()
+
+        if self.aln_hand:
+            self.aln_hand.close()
+
+    def _generate_sequence_matrix(self, seq, var_hash, chrom, shift,
+            target_samples=["gonl-100a"]):
+        """Make a sequence matrix of upstream of a gene"""
+        # FIXME: `shift` should be determined by strand???
+        if not isinstance(var_hash, dict):
+            raise NonDictError  # TODO: a concrete sub-class of TypeError
+
+        if isinstance(target_samples, str):
+            target_samples = [target_samples]
+
+        _seq_init_len = len(seq)
+        target_sample_allele_vec = {}
+        for _each_sample in target_samples:
+            for (_chrom, _pos), _vcf_rec in var_hash.items():
+                _pos = _pos - shift - 1  # TODO: Not sure about the coordination
+
+                _alleles = _vcf_rec.alleles  # tuple of reference allele followed by alt alleles
+                _allele_a, _allele_b = _alleles
+                if len(_allele_a) != 1 or len(_allele_b) != 1:  # indels will be skipped
+                    continue
+
+                _ref_allele = seq[_pos]  # Reference allele base in sequence
+                if _ref_allele != _allele_a:
+                    continue
+
+                # If there is not a GT, will use the reference allele
+                _phase_0, _phase_1 = _vcf_rec.samples \
+                    .get(_each_sample, None) \
+                    .get("GT", (0, 0))
+                _sub_base = NT2AMB[_alleles[_phase_0] + _alleles[_phase_1]]
+                seq = seq[:_pos] + _sub_base + seq[_pos+1:]
+
+            _seq_final_len = len(seq)
+
+            if _seq_init_len != _seq_final_len:
+                continue
+
+            _allele_vec = []
+            for _base in seq:
+                _allele_0, _allele_1 = AMB2NT.get(_base, "NN")
+                _allele_vec.append(
+                    NT2VEC.get(_allele_0, DNTVEC) +
+                    NT2VEC.get(_allele_1, DNTVEC)
+                )
+
+            target_sample_allele_vec[_each_sample] = _allele_vec
+
+        # TODO: perhaps a Pandas DataFrame will make life easier
+        return target_sample_allele_vec
+
+    def _count_haplotype_read(self, itv_recd):
+        """Count reads mapped to each haplotype """
+        counter = HapReadsCounter(itv_recd, self.var_hand, self.aln_hand)
+        counter.count()
+
+    def make_matrix(self, with_orf=False, contig="1", up_shift=100,
+            dw_shift=100, target_genes="ENSG00000187634"):
+        """Make input matrix"""
+        if not isinstance(target_genes, list):
+            target_genes = [target_genes]
+
+        gene_matrix = {}
+        for itv_recd in self.itv_hand.fetch(contig):  # `multiple_iterators` helps create non-consuming iterators
+            if not itv_recd:
+                continue
+
+            gene_id = itv_recd.gene_id
+            if gene_id not in target_genes:
+                continue
+
+            feature = itv_recd.feature
+            strand, start, end = itv_recd.strand, itv_recd.start, itv_recd.end
+
+            if feature == "gene": # to parse upstream- and downstream-sequence into a parse matrix
+                up_matrix = None
+                if up_shift and feature == "gene":
+                    up_start = (int(start) - 1) - up_shift
+                    up_end = int(start) - 1
+                    up_vars = self.var_hand.fetch(contig=contig, start=up_start, stop=up_end, reopen=True)
+                    up_vars_hash = _make_variant_dict(up_vars)
+
+                    if up_vars_hash:  # If there's heterogeous loci in upstream
+                        up_seq = self.seq_hand.fetch(reference=contig, start=up_start, end=up_end)
+                        up_matrix = self._generate_sequence_matrix(up_seq, up_vars_hash, contig, up_start)
+                
+                dw_matrix = None
+                if dw_shift and feature == "gene":
+                    dw_start = int(end) + 1
+                    dw_end = (int(end) + 1) + dw_shift
+                    dw_vars = self.var_hand.fetch(contig=contig, start=dw_start, stop=dw_end, reopen=True)
+
+                    dw_vars_hash = _make_variant_dict(dw_vars)
+                    if dw_vars_hash:  # If there's heterogeous loci in downstream
+                        dw_seq = self.seq_hand.fetch(reference=contig, start=dw_start, end=dw_end)
+                        dw_matrix = self._generate_sequence_matrix(dw_seq, dw_vars_hash, contig, dw_start)
+
+                # TODO: should yield a merged metrix of upstream and downstream
+                if strand == '-':
+                    gene_matrix[gene_id] = {"upstream": dw_matrix, "dwstream": up_matrix}
+                else:
+                    gene_matrix[gene_id] = {"upstream": up_matrix, "dwstream": dw_matrix}
+                    pass
+            elif feature == "exon":  # Make haplotype read count matrix for each exon
+                self._count_haplotype_read(itv_recd)
+            else:
+                pass
+
+        return self
+
+    # def het_reads_counter(self, itv_rec, var_hash, aln_hand):
+    #     """Quantify ASE effects by heterozygous loci in exon regions for a gene
+    #     @param itv_rec Genomic intervl record
+    #     @param var_hash Variants dictionary
+    #     @param aln_hand Sequence alignment file handle
+    #     """
+    #     pass
+
+
+def main(): 
+    parser = get_args()
+    args = parser.parse_args()
+
+    reference = args.reference
+    variants = args.variants
+    annotations = args.annotations
+    alignments = args.alignments
+
+    sequence_matrix = SequenceMatrixFactory()
+    sequence_matrix \
+        .add_aln_handle(alignments) \
+        .add_seq_handle(reference) \
+        .add_itv_handle(annotations) \
+        .add_var_handle(variants)
+
+    matrix_pool = sequence_matrix.make_matrix()
+
+    sequence_matrix.close_all_handle()
+
+
+if __name__ == "__main__":
+    main()
+
+
+class SequenceMatrixPool(object):
+    """A container including multiple SequenceMatrix"""
+
+    def __init__(self):
+        pass
+
+    def add_matrix(self, sequence_matrix):
+        """Add an new matrix into current SequenceMatrixPool"""
+        pass
 
 # A made matrix transforming alleles into matrix, which will make life easier
 TRANS_MATRIX = {
@@ -43,221 +350,3 @@ TRANS_MATRIX = {
     "ta":(1, 0, 0, 1), "tc":(0, 1, 0, 1), "tg":(0, 0, 1, 1), "tt":(0, 0, 0, 1),
     "NN":(0, 0, 0, 0), "nn":(0, 0, 0, 0)
 }
-
-NT2VEC = { # Encoded neucliotide
-    "A": [1, 0, 0, 0], "C": [0, 1, 0, 0], "G": [0, 0, 1, 0], "T": [0, 0, 0, 1]
-}
-
-VEC2NT = {
-    (1, 0, 0, 0): "A", (0, 1, 0, 0): "C", (0, 0, 1, 0): "G", (0, 0, 0, 1): "T"
-}
-
-DNTVEC = [0, 0, 0, 0]  # Base not in ACGT
-
-NT2AMB = {
-    "A": "A", "C": "C", "G": "G", "T": "T",
-    "AC": "K", "AG": "Y", "AT": "W", "CG": "S", "CT": "R", "GT": "M",
-    "CA": "k", "GA": "y", "TA": "w", "GC": "s", "TC": "r", "TG": "m",
-}
-
-AMB2NT = {
-    "A": "A", "C": "C", "G": "G", "T": "T",
-    "K": "AC", "Y": "AG", "W": "AT", "S": "CG", "R": "CT", "M": "GT",
-    "k": "CA", "y": "GA", "w": "TA", "s": "GC", "r": "TC", "m": "TG",
-}
-
-def _make_variant_dict(variants):
-    record_dict = {(var.chrom, var.pos): var for var in variants}  # Using all filter: PASS / Inaccessibl. FIXME: could be duplicated positionse
-    return record_dict
-
-def _parse_sample_genotype(samples, alleles):
-    sample_dict = {key: _decode_vcf_haps(alleles, val.get("GT")) for key, val in samples.items()}
-    return sample_dict
-
-def _decode_vcf_haps(alleles, code):
-    return (alleles[code[0]], alleles[code[1]])
-
-def _encode_hap_into_vec(hap):
-    return NT2VEC.get(hap, [0, 0, 0, 0])
-
-def _decode_vec_into_hap(vec, dft="N"):
-    return VEC2NT.get(tuple(vec), dft)
-
-def matrix_factory(seq, var_hash, chrom, shift, target_samples=["gonl-100a"]):
-    # FIXME: `shift` should be determined by strand???
-    if not isinstance(var_hash, dict):
-        raise NonDictError  # TODO: a concrete sub-class of TypeError
-
-    if isinstance(target_samples, str):
-        target_samples = [target_samples]
-
-    target_sample_allele_vec = {}
-    for _each_sample in target_samples:
-        for (_chrom, _pos), _vcf_rec in var_hash.items():
-            _ref_allele = seq[_pos]  # Reference allele base in sequence
-            _alleles = _vcf_rec.alleles  # tuple of reference allele followed by alt alleles
-            assert _ref_allele == _alleles[0]
-
-            _phase = _vcf_rec.samples.get(_each_sample, None).get("GT", None)
-            if _phase[0] == _phase[1]:
-                continue
-
-            seq = seq[:_pos] + NT2AMB[_alleles[_phase[0]], _alleles[_phase[1]]]] + seq[_pos+1:]
-
-        _allele_vec = []
-        for _base in seq:
-            _allele_0, _allele_1 = AMB2NT[_base]
-            _allele_vec.append(NT2VEC.get(_allele_0, DNTVEC) + NT2VEC.get(_allele_1, DNTVEC]))
-
-        target_sample_allele_vec[_each_sample] = _allele_vec
-        print(seq)
-    
-    return target_sample_allele_vec
-
-def make_matrix(inter_hand, seq_hand, var_hand, aln_hand, with_orf=False, contig="1",
-                up_shift=1000, dw_shift=1000, merged=True, interval_types="gene",
-                target_genes="ENSG00000187634"):
-    """Make input matrix"""
-    var_header = var_hand.header
-    # var_sample = var_hand.samples
-
-    gene_matrix = {}
-    for gtf_record in inter_hand.fetch("1"):
-        # Important fields
-        # attrbutes = gtf_record.attributes
-
-        feature = gtf_record.feature
-        if not isinstance(interval_type, list):
-            interval_types = [interval_types]
-
-        if feature not in interval_types:
-            continue
-        
-        if not isinstance(target_genes, list):
-            target_genes = [target_genes]
-
-        gene_id = gtf_record.gene_id
-        if gene_id not in target_genes:
-            continue
-
-        contig = gtf_record.contig
-        strand = gtf_record.strand
-        start = gtf_record.start
-        end = gtf_record.end
-
-        iv_start, iv_stop = start, end
-        iv_vars = var_hand.fetch(contig=contig, start=iv_start, stop=iv_stop, reopen=True)  # 0-based indexing
-        iv_vars_hash = _make_variant_dict(iv_vars)
-        print(iv_vars_hash)
-
-        # if iv_vars_hash:
-            # iv_seq = seq_hand.fetch(reference=contig, start=iv_start, end=iv_stop)  # 0-based indexing
-
-            # iv_pileups = aln_hand.pileup(contig=contig, start=iv_start, stop=iv_stop, min_base_quality=20)  # 0-based
-        
-            # for _column in iv_pileups:
-            #     sequence_per_locus = _column.get_query_sequences()
-            #     ref_pos = _column.reference_pos
-            #     ref_id = _column.reference_id
-
-            #     if (str(contig), iv_start) in iv_vars_hash:
-            #         print("Ref pos: {}:{}. Also in VCF: {}".format(ref_id, ref_pos, sequence_per_locus))
-            # print("CHROM: {}, position: {}", ref_id, ref_pos)
-
-        up_matrix = None
-        if up_shift and feature == "gene":
-            up_start = (int(start) - 1) - up_shift
-            up_end = int(start) - 1
-            up_vars = var_hand.fetch(contig=contig, start=up_start, stop=up_end, reopen=True)
-            up_vars_hash = _make_variant_dict(up_vars)
-
-            if up_vars_hash:
-                up_seq = seq_hand.fetch(reference=contig, start=up_start, end=up_end)
-                up_matrix = matrix_factory(up_seq, up_vars_hash, contig, up_start)
-                print(up_matrix)
-        
-        dw_matrix = None
-        if dw_shift and feature == "gene":
-            dw_start = int(end) + 1
-            dw_end = (int(end) + 1) + dw_shift
-            dw_vars = var_hand.fetch(contig=contig, start=dw_start, stop=dw_end, reopen=True)
-
-            dw_vars_hash = _make_variant_dict(dw_vars)
-            if dw_vars_hash:
-                dw_seq = seq_hand.fetch(reference=contig, start=dw_start, end=dw_end)
-                dw_matrix = matrix_factory(dw_seq, dw_vars_hash, contig, dw_start)
-                print(dw_matrix)
-
-        # TODO: should yield a merged metrix of upstream and downstream
-        if strand == '-':
-            gene_matrix[gene_id] = {"upstream": dw_matrix, "dwstream": up_matrix}
-        else:
-            gene_matrix[gene_id] = {"upstream": up_matrix, "dwstream": dw_matrix}
-
-    return gene_matrix
-
-def main(): 
-    parser = get_args()
-    args = parser.parse_args()
-
-    reference = args.reference
-    variants = args.variants
-    annotations = args.annotations
-    alignments = args.alignments
-
-    sequence_hand = ps.FastaFile(reference)
-    variant_hand = ps.VariantFile(variants, duplicate_filehandle=True)
-    interval_hand = ps.TabixFile(annotations, parser=ps.asGTF())
-    alignment_hand = ps.AlignmentFile(alignments, "rb", duplicate_filehandle=True)
-
-    matrix_pool = make_matrix(interval_hand, sequence_hand, variant_hand, alignment_hand)
-
-    sequence_hand.close()
-    variant_hand.close()
-    alignment_hand.close()
-    interval_hand.close()
-
-if __name__ == "__main__":
-    main()
-
-
-# Sequence is 0-based
-# gonl-100a AC47H5ACXX-3-18 Example
-# 1. get some example data from real dataset
-# 1.1 example.fa
-# reference genome: GRCh37
-# (/groups/umcg-bios/tmp03/users/umcg-zzhang/projects/ASEPrediction/benchmark/inputs/references)
-# ```
-# $> head -668 genome.fa > tmp.fa
-# $> grep -vn N tmp.fa
-# $> (head -1 tmp.fa; sed -n '169,$p' tmp.fa) > example.fa
-# $> module load SAMtools/1.5-foss-2015b
-# $> samtools faidx example.fa
-# example.fa example.fa.fai
-# ```
-# Now we have a fragment reference genome from GRCh37. It starts with non-N at
-# 10,021 (167 * 60), ends at 40,020 (667 * 60), with length 30,000. (1:1-40020)
-# 1.2 example.bam
-# ```
-# module load SAMtools
-# ```
-# 1.3 example.vcf.gz
-# Fetch variants from gonl.chr1.snps_index.r5.3.vcf.gz
-# /groups/umcg-gonl/prm02/releases/variants/GoNL1/release6.1/06_IL_haplotype_panel
-# ```
-# $> module load BCFtools/1.6.foss-2015b
-# $> bcftools view gonl.chr1.snps_indels.r5.3.vcf.gz 1:40021-70020 > ~/Documents/example.vcf
-# $> bgzip ~/Documents/example.vcf
-# $> cd ~/Documents
-# $> bcftools index example.vcf.gz
-# ```
-
-# 1.4 example.gff.gz
-# Fetch interval from Homo_sapiens.GRCh37.75.gff
-# ```
-# grep -P "^1\t" Homo_sapiens.GRCh37.75.gff | sort -k4,5n > example.gff
-# module load tabix
-# bgzip example.gff
-# tabix -p gff example.gff.gz
-# awk '{if ($5 <= 9250800 && $1 == 1) {print}}' ../gff/Homo_sapiens.GRCh37.75.gtf  > example.gff
-# ```
