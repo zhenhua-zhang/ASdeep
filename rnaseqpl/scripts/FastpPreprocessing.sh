@@ -4,23 +4,24 @@
 #
 
 # TODO:
-# 	1. Command lind processing script scope
+#     1. Command lind processing script scope
 
 # NOTE:
 # --detect_adapter_for_pe is enabled to check the adapters, it could slow down the process by the manual.
 # --trim_poly_g is enabled to trim poly-G, where the G means no signal in the Illumina two-color systems.
 # --overrepresentation_sampling is used to check 1% of all reads to analysis the overrepresented sequence
 
+source ../bin/utils
 
 echo_help() {
-	cat <<EOF
+    cat <<EOF
 
 Help:
   -w|--workDir Required
       Working directory
   -i|--fastqId Required
       FASTQ files ID
-  -p|--fastqPath Required
+  -p|--fastqDir Required
       Path to the FASTQ files
   -s|--fastqSuffix Optional
       Suffix for the input FASTQ files
@@ -31,37 +32,40 @@ Help:
 
 More information please contact Zhenhua Zhang <zhenhua.zhang217@gmail.com>
 EOF
-	exit 0
+    exit 0
 }
 
-opt=$(getopt -l "workDir:,fastqId:,fastqPath:,fastqSuffix:,help" -- "w:i:p:s:" $@)
+opt=$(getopt -l "workDir:,fastqId:,fastqDir:,fastqSuffix:,help" -- "w:i:p:s:" $@)
 eval set -- ${opt}
 while true; do
-	case $1 in
-		-w|--workDir) shift && workdir=$1 ;;
-		-i|--fastqId) shift && fastqId=$1 ;;
-		-p|--fastqPath) shift && fastqPath=$1 ;;
-		-s|--fastqSuffix) shift && fastqSuffix=$1 ;;
-		--threads) shift && fastpThreads=$1 ;;
-		--help) echo_help ;;
-		--) echo_help;;
-	esac
-	shift
+    case $1 in
+        -w|--workDir) shift && workdir=$1 ;;
+        -i|--fastqId) shift && fastqId=$1 ;;
+        -p|--fastqDir) shift && fastqDir=$1 ;;
+        -s|--fastqSuffix) shift && fastqSuffix=$1 ;;
+        --threads) shift && fastpThreads=$1 ;;
+        --help) echo_help ;;
+        --) echo_help;;
+    esac
+    shift
 done
 
 # Variables by command line
-workDir=${workDir:?-w/--workDir is mandatory}
-fastqId=${fastqId:?-i/--fastqId is mandatory}
-fastqPath=${fastqPath:?-p/--fastqPath is mandatory}
+workDir=${workDir:?[E]: -w/--workDir is mandatory}
+fastqId=${fastqId:?[E]: -i/--fastqId is mandatory}
+fastqDir=${fastqDir:?[E]: -p/--fastqDir is mandatory}
+fastqPrefix=${fastqPrefix:=}
 fastqSuffix=${fastqSuffix:=.fq.gz}
-fastpThreads=${fastpThreads:=$SLURM_CPUS_PER_TASK}  # Threadings. #FIXME: Only using SLURM
 
 # Variables by hard coding
+[ -n $SLURM_CPUS_PER_TASK ] \
+    && fastpThreads=$[ $SLURM_CPUS_PER_TASK ]
+    || fastpThreads=$[ $(cat /proc/cpuinfo | grep -c processor) ]
 fastpTmpDir=$workDir/$fastqId/fastpTmpDir
 
 # Inputs
-fastqFile_1=$fastqPath/$fastqId"_R1"$fastqSuffix  # Partially hard coded
-fastqFile_2=$fastqPath/$fastqId"_R2"$fastqSuffix
+fastqFile_1=${fastqDir}/${fastqPrefix}${fastqId}"_R1"${fastqSuffix}
+fastqFile_2=${fastqDir}/${fastqPrefix}${fastqId}"_R2"${fastqSuffix}
 
 # Outputs
 fastqPaired_1=$fastpTmpDir/${fastqId}_paired_R1.fq.gz
@@ -84,7 +88,7 @@ fastqUnpaired_2=$fastpTmpDir/${fastqId}_unpaired_R2.fq.gz
     --unpaired2 $fastqUnpaired_2  \
     --failed_out $fastqFailed \
     --html $fastqHtmlReport \
-	--json $fastqJsonReport \
+    --json $fastqJsonReport \
     --detect_adapter_for_pe \
     --cut_front \
     --cut_tail \

@@ -3,40 +3,30 @@
 ## A pipeline of Allele-specific expression analysi by exploiting Fastq, STAR, WASP and SAMtools
 #
 
+source ./utils
+
 set -o errexit
 set -o errtrace
 
 export SCRIPT_VERSOIN="0.1.0"
 
-ERRO() {
-	echo -e "[ERRO]: $1" >&2 && exit -1
-}
-
-WARN() {
-	echo -e "[WARN]: $1" >&2
-}
-
-INFO() {
-	echo -e "[INFO]: $1"
-}
-
 echo_version() {
-	cat << EOF
+    cat << EOF
 
 $(basename $0), Version ${SCRIPT_VERSOIN:=UNKNOWN}
 EOF
 }
 
 echo_usage() {
-	cat <<EOF
+    cat <<EOF
 
 Usage: ./$0 [options]
-	or bash $0 [options]
+    or bash $0 [options]
 EOF
 }
 
 echo_help() {
-	cat <<EOF
+    cat <<EOF
 $(basename $0), Version ${SCRIPT_VERSOIN:=UNKNOWN}
 
 Help:
@@ -49,100 +39,152 @@ Help:
 
 More information please contact Zhenhua Zhang <zhenhua.zhang217@gmail.com>
 EOF
-	exit 0
 }
 
 
-opt=$(getopt -l "workDir:,fastqId:,snpHdf5db:,help,usage,version" -- "w:s:h" $@)
+opt=$(getopt -l "workDir:,fastqId:,snpHdf5db:,help,usage,version" -- "w:i:p:g:f:a:v:" $@)
 eval set -- ${opt}
 while true; do
-	case $1 in
-		-w|--workDir) shift && workdir=$1 ;;
-		-i|--fastqId) shift && fastqID=$1 ;;
-		-p|--fastqPath) shift && fastqPath=$1 ;;
-		-g|--starGenomeIndexDir) shift && starGenomeIndexDir=$1 ;;
-		-f|--genomeFastaFile) shift && genomeFastaFile=$1;;
-		-a|--genomeAnnotationsFile) shift && genomeAnnotationsFile=$1 ;;
-		-v|--vcfFile) shift && vcfFile=$1 ;;  # the SNP hDF5 database
-		--help) echo_help ;;
-		--usage) echo_usage && exit 0;;
-		--version) echo_version && exit 0;;
-		--) echo_help;;
-	esac
-	shift
+    case $1 in
+        -w|--workDir) shift && workdir=$1 ;;
+        -i|--fastqId) shift && fastqID=$1 ;;
+        -p|--fastqDir) shift && fastqDir=$1 ;;
+        -g|--genomeDir) shift && genomeDir=$1 ;;
+        -f|--genomeFastaFile) shift && genomeFastaFile=$1;;
+        -a|--genomeAnnotationsFile) shift && genomeAnnotationsFile=$1 ;;
+        -v|--vcfFile) shift && vcfFile=$1 ;;  # the SNP hDF5 database
+        --help) echo_help && exit 0;;
+        --usage) echo_usage && exit 0;;
+        --version) echo_version && exit 0;;
+        --) echo_help && exit 0;;
+        *) ehco_help && exit 0;;
+    esac
+    shift
 done
 
 # Setup working directories for current project
 " How the working tree looks like
-workdir/
-├── [gnomedir/]
-├── [snp2h5dir/]
-├── outputdir/
+WORKDIR/
+├── [genomedir/]
+├── [snpHDF5db/]
+├── optdir/
+│   └── FASTQID/
+│       ├── fastpOptdir/
+│       ├── starOptdir/
+│       └── waspOptdir/
 └── tmpdir/
-    └── AC47H5ACXX-3-18/
+    └── FASTQID/
         ├── fastpTmpdir/
         ├── starTmpdir/
         └── waspTmpdir/
 "
 
-tooldir=./bin
 workDir=${workDir:?-w/--workDir is required}
 fastqId=${fastqId:?-s/--fastqId is required}  # ${fastqId}_R1.fq.gz & ${fastqId}_R2.fq.gz
+fastqDir=${fastqDir:?-p/--fastqDir is required}
 
-mkdir -p $workDir
-mkdir -p $workDir/tmpdir/$fastqId
-mkdir -p $workDir/outputdir/$fastqId
+if [ -z ${genomeDir} ]; then
+    if [ -z ${genomeFastaFile} ]; then
+        ERRO "Either -g/--genomeDir or -f/--genomeFastaFile should be given!"
+    fi
+
+    # Setup the path of STAR genome index
+    genomeDir=${genomeDir:=${workDir}/genomedir}
+else
+    if [ -n ${genomeFastaFile} ]; then
+        ERRO "Either -g/--genomeDir or -f/--genomeFastaFile should be given, but not both!"
+    fi
+fi
+
+if [ -d $workDir/tmpdir/$fastqId -o -d $workDir/optdir/$fastqId ]; then
+    ERRO "It looks you have worked on ${fastqId}"
+fi
+
+mkdir -p $workDir/tmpdir/$fastqId/{fastp,star,wasp}Tmpdir
+mkdir -p $workDir/optdir/$fastqId/{fastp,star,wasp}Optdir
 
 # Preprocessing fastq files. Current only for paired-end FASTQs
-FastpPreproc=$(sbatch \
-	--time=30:00 \
-	--cpus=10 \
-	--mem=5G \
-	--output=%j-%u-FastpPreprocessing.log \
-	--job-name=FastpPreprocessing \
-	FastpPreprocessing.sh \
-	--fastqId ${fastqId} \
-	--workDir ${workDir}
+FastpPreproc=$(sbatch --time=0:30:00 --cpus=10 --mem=5G \
+    --output=%j-%u-${fastqId}-FastpPreprocessing.log \
+    --job-name=FastpPreprocessing \
+    ../scripts/FastpPreprocessing.sh \
+    -w ${workDir} \
+    -i ${fastqId} \
+    -p ${fastqDir}
 )
 
 # Create STAR genome index.
 # The index was made on human genome build 37, using transcript annotations (V75) downloaded from
-# Ensembl. The genoeme index should be constructed with annotations.
-if [ ! -d $genomeDir ]; then
-	STARGenomeIndex=$(sbatch ./scripts/StarBuildGenomeIndex.sh)
-	mkdir -p $workDir/genomedir
+# Ensembl. The genome index should be constructed with annotations.
+if [ ! -d ${genomeDir} ]; then
+    mkdir -p ${workDir}/genomedir
+    STARGenomeIndex=$(sbatch --time=0:10:00 --cpus=10 --mem=120G \
+        --output=%j-%u-${fastqId}-StarBuildGenomeIndex.log \
+        --job-name=StarBuildGenomeIndex \
+        ./scripts/StarBuildGenomeIndex.sh \
+        -w ${workDir} \
+        -g ${genomeDir} \
+        -f ${genomeFastaFile} \
+        -a ${genomeAnnotationsFile}
+    )
+else
+    INFO "Found ${genomeDir}, supposing it as a legal STAR genome index"
 fi
 
 # STAR first round of mapping
 if [ -z $STARGenomeIndex ]; then
-	dependency=$FastpPreproc
+    dependency=$FastpPreproc
 else
-	dependency=$FastpPreproc:$STARFirstMapping
+    dependency=$FastpPreproc:$STARGenomeIndex
 fi
-STARFirstMapping=$(sbatch --dependency=afterok:$dependency ./scripts/StarFirstMapping.sh)
+
+STARFirstMapping=$(sbatch --dependency=afterok:$dependency \
+    --time=0:10:00 --cpus=10 --mem=40G \
+    --output=%j-%u-${fastqId}-StarFirstMapping.log \
+    --job-name=StarFirstMapping \
+    ../scripts/StarFirstMapping.sh \
+    -w ${workDir} \
+    -g ${genomeDir} \
+    -i ${fastqId}
+)
 
 # Split BAM file by chromosome
-SAMtoolsSplitBAMbyChr=$(sbatch \
-	--dependency=afterok:$STARFirstMapping \
-	--mem=10G \
-	--cpus=4 \
-	--ntasks=1 \
-	--array=1-22 \
-	./scripts/SamtoolsSplitBAMbyChr.sh)
+SAMtoolsSplitBAMbyChr=$(sbatch --dependency=afterok:$STARFirstMapping \
+    --mem=10G --cpus=4 --ntasks=1 --array=1-22 \
+    --output=%j-%u-${fastqId}-SAMtoolsSplitBAMbyChr.log \
+    --job-name=SAMtoolsSplitBAMbyChr \
+    ../scripts/SamtoolsSplitBAMbyChr.sh \
+    -w ${workDir} \
+    -i ${fastqId}
+)
 
 # Create HDF5 database for given genome variant files
-if [ ! -d $workDir/snp2h5dir ]; then
-	WASPSnp2Hdf5=$(sbatch ./scripts/WaspCreateSnpHdf5Database.sh)
+if [ ! -d $workDir/snpHDF5db ]; then
+    WASPSnp2Hdf5=$(sbatch --mem=10G --cpus=4 --ntasks=1 \
+        --output=%j-%u-${fastqId}-WASPSnp2Hdf5.log \
+        --job-name=WASPSnp2Hdf5 \
+        ../scripts/WaspCreateSnpHdf5Database.sh
+    )
 fi
 
 # WASP pipeline run array
-if [ ! -d $workDir/snp2h5dir ]; then
-	dependency=$WASPSnp2Hdf5:$SAMtoolsSplitBAMbyChr
+if [ -z ${WASPSnp2Hdf5} ]; then
+    dependency=$SAMtoolsSplitBAMbyChr
 else
-	dependency=$SAMtoolsSplitBAMbyChr
+    dependency=$WASPSnp2Hdf5:$SAMtoolsSplitBAMbyChr
 fi
-WASPPipelinePerChr=$(sbatch --dependency=afterok:$dependency ./scripts/WaspPipelinePerChr.sh)
 
-# Create report and clean up
-sbatch --dependency=afterok:$WASPPipelinePerChr ./scripts/CollectOutputAndCleanup.sh
+WASPPipelinePerChr=$(sbatch --dependency=afterok:$dependency \
+    --mem=10G --cpus=4 --ntasks=1 \
+    --output=%j-%u-${fastqId}-WASPPipelinePerChr.log \
+    --job-name=WASPPipelinePerChr \
+    ../scripts/WaspPipelinePerChr.sh
+)
+
+# Collect output and clean up
+sbatch --dependency=afterok:$WASPPipelinePerChr \
+    --mem=10G --cpus=4 --ntasks=1 \
+    --output=%j-%u-${fastqId}-CollectOutputAndCleanup.log \
+    --job-name=CollectOutputAndCleanup \
+    ../scripts/CollectOutputAndCleanup.sh
 

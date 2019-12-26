@@ -22,30 +22,25 @@ opt=$(getopt -l "workDir:,FASTQID:,chromInfo:,firstMapBAM:,snpHDF5db:,help" -- "
 eval set -- ${opt}
 while true; do
 	case $1 in
-		-c|--chromInfo)
-			shift && chromInfo=$1 ;;
-		-f|--map1Bam)
-			shift && map1Bam=$1 ;;
-		-H|--snpHDF5db)
-			shift && snpHDF5db=$1 ;;
-		-v|--virtualEnv)
-			shift && virtualEnv=$1 ;;
-		-h|--help) 
-			echo_help ;;
-		--)
-			echo -e "The CLI options are empty"
-			echo_help ;;
+		-c|--chromInfo) shift && chromInfo=$1 ;;
+		-f|--map1Bam) shift && map1Bam=$1 ;;
+        -w|--waspPath) shift && waspPath=$1 ;;
+		-H|--snpHDF5db) shift && snpHDF5db=$1 ;;
+		-v|--virtualEnv) shift && virtualEnv=$1 ;;
+        --outBAMsortingThreadN) shift && outBAMsortingThreadN=$1 ;;
+		--help) echo_help ;;
+		--) echo -e "The CLI options are empty" && echo_help ;;
 	esac
 	shift
 done
 
 chromId=$SLURM_ARRAY_TASK_ID
-waspPerChrDir=$WORKDIR/$FASTQID/waspTmpdir/$SLURM_ARRAY_TASK_ID
+waspPerChrDir=$WORKDIR/$FASTQID/waspTmpdir/$chromId
 map1Dir=$waspPerChrDir/map1Dir
+waspPath=${waspPath:=../bin/WASP}
 
 module purge
-module load HDF5/1.8.14-foss-2015b
-module load Python/3.6.3-foss-2015b
+module load HDF5/1.8.14-foss-2015b Python/3.6.3-foss-2015b
 module list
 
 # Load virtual environment if needed, otherwise will use the loaed or system default Python
@@ -54,17 +49,17 @@ if [ -n $virtualEnv ]; then
 	source $virtualEnv/bin/activate
 fi
 
-# Load HDF5 database for VCF or imputation results. The database should be constructed before.
-snpTabFile=$snpHDF5db/snptab.h5
-snpIndexFile=$snpHDF5db/snpidex.h5
-haplotypeFile=$snpHDF5db/haplotype.h5
-
 # find_intersecting_snps.py
-findIntersectingSnpsPy=
 findIntersectingSnpsDir=$waspPerChrDir/findIntersectingSnpsDir
-
 mkdir -p $findIntersectingSnpsDir
 
+# Load HDF5 database for VCF or imputation results. The database should be constructed before.
+snpHDF5db=${snpHDF5db:=${workDir}/snpHDF5db}
+snpTabFile=$snpHDF5db/snpsTab.h5
+snpIndexFile=$snpHDF5db/snpsIndex.h5
+haplotypeFile=$snpHDF5db/haplotype.h5
+
+findIntersectingSnpsPy=${waspPath}/mapping/find_intersecting_snps.py
 python $findIntersectingSnpsPy \
     --is_paired_end \
     --is_sorted \
@@ -80,11 +75,13 @@ python $findIntersectingSnpsPy \
 map2dir=$waspPerChrDir/map2dir
 mkdir -p $map2_dir
 
-map2ReadFilesIn_1=
-map2ReadFilesIn_2=
+map2ReadFilesIn_1= #TODO: Not yet!!!!
+map2ReadFilesIn_2= #TODO: Not yet!!!!
 
-runThreadN=$[ $SLURM_CPUS_PER_TASK - 2 ]
-outBAMSortingThreadN=2
+outBAMsortingThreadN=${outBAMsortingThreadN:=2}
+[ -n ${SLURM_CPUS_PER_TASK} ] \
+    && runThreadN=$[ ${SLURM_CPUS_PER_TASK} - ${outBAMsortingThreadN} ]
+    || runThreadN=$[ $(grep -c processor /proc/cpuinfo) - ${outBAMsortingThreadN} ]
 
 module purge
 module load STAR/2.5.1b-foss-2015b
@@ -105,7 +102,7 @@ STAR \
 #
 ## Filter remapped reads
 #
-filterRemappedReadsPy= # filter_remapped_reads.py
+filterRemappedReadsPy=$waspPath/mapping/filter_remapped_reads.py
 filterRemappedReadsDir=$waspPerChrDir/filterRemappedReadsDir
 mkdir -p $filterRemappedReadsDir
 
@@ -114,8 +111,7 @@ remapBAM=
 keptBAM1=
 
 module purge
-module load HDF5/1.8.14-foss-2015b
-module load Python/3.6.3-foss-2015b
+module load HDF5/1.8.14-foss-2015b Python/3.6.3-foss-2015b
 module list
 
 python $filterRemappedReadsPy \
@@ -149,11 +145,10 @@ rmdupBAM=
 
 mkdir -p $removeDuplicatedPairedDir
 module purge
-module load HDF5/1.8.14-foss-2015b
-module load Python/3.6.3-foss-2015b
+module load HDF5/1.8.14-foss-2015b Python/3.6.3-foss-2015b
 module list
 
-source $virtualEnv/bin/activate
+[ -n $virtualEnv ] && source $virtualEnv/bin/activate
 python $rmdupPePy $keptMergedSortedBAM $rmdupBAM
 
 module purge
@@ -168,7 +163,7 @@ samtools index -@ $samtoolsThreads $rmdupSotedBAM
 #
 ## Get Allele-specific read counts
 #
-aseDir=
+aseDir=$waspTmpdir/aseDir
 mkdir -p $aseDir
 
 module purge
@@ -176,15 +171,15 @@ module load HDF5/1.8.14-foss-2015b
 module load Python/3.6.3-foss-2015b
 module list
 
-source $virtualEnv/bin/activate
+[ -n $virtualEnv ] && source $virtualEnv/bin/activate
 
-bam2H5Py=
+bam2H5Py=$waspPath/CHT/bam2h5.py
 individualId=
-referenceAlleleCountsFile=
-alternativeAlleleCountsFile=
-otherAlleleCountsFile=
-readsCounts=
-readsCountsInText=
+referenceAlleleCountsFile=${fastqId}_${chromId}_refAlleleCounts.h5
+alternativeAlleleCountsFile=${fastqId}_${chromId}_altAlleleCounts.h5
+otherAlleleCountsFile=${fastqId}_${chromId}_otherAlleleCounts.h5
+readsCounts=${fastqId}_${chromId}_readCounts.h5
+readsCountsInText=${fastqId}_${chromId}_readCountsInText.txt
 
 python $bam2H5Py \
     --chrom $chromInfo \
