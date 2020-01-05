@@ -3,55 +3,77 @@
 ## WASP pipeline. Remapping bias reads
 #
 
+# TODO:
+#   1. Add --samples options to specify samples
+
 set -o errexit
 set -o errtrace
 
-source ../bin/utils
+source /apps/modules/modules.bashrc
 
-echo_version() {
-    cat << EOF
-
-$(basename $0), Version ${SCRIPT_VERSOIN:=UNKNOWN}
-EOF
+ERRO() {
+    echo -e "[E]: $1" >&2 && exit -1
 }
 
-echo_usage() {
-    cat <<EOF
+WARN() {
+    echo -e "[W]: $1" >&2
+}
 
-Usage: ./$0 [options]
-    or bash $0 [options]
-EOF
+INFO() {
+    echo -e "[I]: $1"
+}
+
+check_cpus() {
+    local n_cpus
+    local balance
+
+    [ $1"x" == "x" ] \
+        && balance=0 \
+        || balance=$1
+
+    [ $SLURM_CPUS_PER_TASK"x" == "x" ] \
+        && n_cpus=$[ $(grep -c processor /proc/cpuinfo) - $balance ] \
+        || n_cpus=$[ $SLURM_CPUS_PER_TASK - $balance ]
+
+    [ $n_cpus -gt 0 ] \
+        && echo $n_cpus \
+        || echo $[ $n_cpus + $balance ]
 }
 
 echo_help() {
     cat <<EOF
-$(basename $0), Version ${SCRIPT_VERSOIN:=UNKNOWN}
+
+Usage: $(basename $0) [options]
 
 Help:
-  -h, --help    Optional. Action: print_info
+  -w|--workDir [required]
+      Working directory.
+  -v|--vcfFile [required]
+      VCF file including variants. To supply multiple VCF files, use comma to as splitter.
+  -c|--chromInfoFile [required]
+      Length of each chromosome.
+  -e|--snp2h5Exe [Optional]
+      The executbale snp2h5 programe. For currently the WASP pipeline hasn't
+      globally deployed.
+  -h, --help
     Print this help context and exit.
-  -u, --usage    Optional. Action: print_info
-    Print usage context and exit.
-  -V, --version    Optional. Action: store_true
-    Print version of current script and exit.
 
 More information please contact Zhenhua Zhang <zhenhua.zhang217@gmail.com>
+
 EOF
 }
 
-opt=$(getopt -l "workDir:,fastqId:,snpHdf5db:,help,usage,version" -- "w:i:p:g:f:a:v:" $@)
+opt=$(getopt -l "workDir:,vcfFile:,chromInfoFile:,snp2h5Exe:,help" -- "w:v:c:e:h" $@)
 eval set -- ${opt}
 while true; do
     case $1 in
-        -w|--workDir) shift && workdir=$1 ;;
-        -v|--vcfFile) shift && vcfFile=$1 ;;  # the SNP hDF5 database
-        -c|--chromInfoFile) shift && chrmInfoFile=$1 ;;  # the SNP hDF5 database
+        -w|--workDir) shift && workDir=$1 ;;
+        -v|--vcfFile) shift && vcfFile=($1) ;;
+        -c|--chromInfoFile) shift && chromInfoFile=$1 ;;
         -e|--snp2h5Exe) shift && snp2h5Exe=$1 ;;
-        --help) echo_help && exit 0;;
-        --usage) echo_usage && exit 0;;
-        --version) echo_version && exit 0;;
-        --) echo_help && exit 0;;
-        *) ehco_help && exit 0;;
+        -s|--samples) shift && samples=$1 ;;
+        -h|--help) echo_help && exit 0;;
+        --) shift && break ;;
     esac
     shift
 done
@@ -59,23 +81,25 @@ done
 # WASP snp2h5. Construct a HDF5 database from VCF file including haplotypes
 # --geno_prob $geno_prob_file \   to use this option, the vcf file has to include GL or GP token
 
-workDir=${workDir:?-w/--workDir is required}
-fastqId=${fastqId:?-s/--fastqId is required}  # ${fastqId}_R1.fq.gz & ${fastqId}_R2.fq.gz
+workDir=${workDir:?-w/--workDir is required!}
+vcfFile=${vcfFile:?-v/--vcfFile is required!}
+chromInfoFile=${chromInfoFile:?-c/--chromInfoFile is required!}
 
 module purge
 module load HDF5/1.8.14-foss-2015b
 module list
 
-# Create a directory for SNP2H5 and `cd` into it.
-snpHDF5db=${workDir}/snpHDF5db
-mkdir -p ${snpHDF5db}
+# Create a directory for SNP2H5
+snph5db=$workDir/snph5db
+mkdir -p $snph5db
 
+# Dangerous but useful. TODO: a better way to handle multiple arguments.
+IFS=','
 ${snp2h5Exe:=snp2h5} \
-	--chrom ${chrmInfoFile} \
+	--chrom $chromInfoFile \
 	--format vcf \
-	--snp_tab ${snpHDF5db}/snpsTab.h5 \
-	--snp_index ${snpHDF5db}/snpsIndex.h5 \
-	--haplotype ${snpHDF5db}/haplotype.h5 \
-	${vcfFile}
-
-[ $? -eq 0 ] && INFO "Job was done!" || ERRO "Job exit with non-zero!"
+	--snp_tab $snph5db/snps_tab.h5 \
+	--snp_index $snph5db/snps_index.h5 \
+	--haplotype $snph5db/haplotype.h5 \
+	$vcfFile
+IFS=' '
