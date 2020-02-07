@@ -6,37 +6,10 @@ set -o errexit
 set -o errtrace
 
 source /apps/modules/modules.bashrc
+source ${WASPPL_SCRIPT_PATH}/utils.sh
 
-ERRO() {
-    echo -e "[E]: $1" >&2 && exit -1
-}
-
-WARN() {
-    echo -e "[W]: $1" >&2
-}
-
-INFO() {
-    echo -e "[I]: $1"
-}
-
-check_cpus() {
-    local n_cpus
-    local balance
-
-    [ $1"x" == "x" ] \
-        && balance=0 \
-        || balance=$1
-
-    [ $SLURM_CPUS_PER_TASK"x" == "x" ] \
-        && n_cpus=$[ $(grep -c processor /proc/cpuinfo) - $balance ] \
-        || n_cpus=$[ $SLURM_CPUS_PER_TASK - $balance ]
-
-    [ $n_cpus -gt 0 ] \
-        && echo $n_cpus \
-        || echo $[ $n_cpus + $balance ]
-}
-
-opt=$(getopt -l "workDir:,fastqId:,help" -- "w:i:h" $@)
+long_opts="workDir:,fastqId:,help"
+opt=$(getopt -l $long_opts -- "w:i:h" $@)
 eval set -- ${opt}
 while true; do
 	case $1 in

@@ -10,39 +10,7 @@ set -o errexit
 set -o errtrace
 
 source /apps/modules/modules.bashrc
-
-# [ $SCRIPT_PATH"xxx" == "xxx" ] \
-#     && echo "No SCRIPT_PATH is set." && exit 1 \
-#     || source $SCRIPT_PATH/utils.sh
-
-ERRO() {
-    echo -e "[E]: $1" >&2 && exit -1
-}
-
-WARN() {
-    echo -e "[W]: $1" >&2
-}
-
-INFO() {
-    echo -e "[I]: $1"
-}
-
-check_cpus() {
-    local n_cpus
-    local balance
-
-    [ $1"x" == "x" ] \
-        && balance=0 \
-        || balance=$1
-
-    [ $SLURM_CPUS_PER_TASK"x" == "x" ] \
-        && n_cpus=$[ $(grep -c processor /proc/cpuinfo) - $balance ] \
-        || n_cpus=$[ $SLURM_CPUS_PER_TASK - $balance ]
-
-    [ $n_cpus -gt 0 ] \
-        && echo $n_cpus \
-        || echo $[ $n_cpus + $balance ]
-}
+source ${WASPPL_SCRIPT_PATH}/utils.sh
 
 echo_help() {
 	cat <<EOF
@@ -69,7 +37,8 @@ EOF
 	exit 0
 }
 
-opt=$(getopt -l "workDir:,fastqId:,snph5db:,waspPath:,virtualEnv:,sampleIdFile:,help" -- "w:i:d:W:v:s:h" $@)
+long_opts="workDir:,fastqId:,snph5db:,waspPath:,virtualEnv:,sampleIdFile:,help"
+opt=$(getopt -l $long_opts -- "w:i:d:W:v:s:h" $@)
 eval set -- ${opt}
 while true; do
 	case $1 in
@@ -92,7 +61,7 @@ fastqId=${fastqId:?-i/--fastqId is required!}
 snph5db=${snph5db:?-d/--snph5db is required!}
 sampleIdFile=${sampleIdFile:?-s/--sampleIdFile is required!}
 
-waspPath=${waspPath:=~/tools/WASP} # FIXME: when using sbatch, it doesn't work!!
+waspPath=${waspPath:=~/tools/WASP}
 waspPath=$(readlink -f $waspPath)
 
 chromId=${SLURM_ARRAY_TASK_ID:=1}

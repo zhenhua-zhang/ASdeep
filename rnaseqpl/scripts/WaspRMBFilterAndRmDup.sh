@@ -6,35 +6,7 @@ set -o errexit
 set -o errtrace
 
 source /apps/modules/modules.bashrc
-
-ERRO() {
-    echo -e "[E]: $1" >&2 && exit -1
-}
-
-WARN() {
-    echo -e "[W]: $1" >&2
-}
-
-INFO() {
-    echo -e "[I]: $1"
-}
-
-check_cpus() {
-    local n_cpus
-    local balance
-
-    [ $1"x" == "x" ] \
-        && balance=0 \
-        || balance=$1
-
-    [ $SLURM_CPUS_PER_TASK"x" == "x" ] \
-        && n_cpus=$[ $(grep -c processor /proc/cpuinfo) - $balance ] \
-        || n_cpus=$[ $SLURM_CPUS_PER_TASK - $balance ]
-
-    [ $n_cpus -gt 0 ] \
-        && echo $n_cpus \
-        || echo $[ $n_cpus + $balance ]
-}
+source ${WASPPL_SCRIPT_PATH}/utils.sh
 
 echo_help() {
     cat <<EOF
@@ -56,7 +28,8 @@ EOF
     exit 0
 }
 
-opt=$(getopt -l "workDir:,fastqId:,waspPath:,virtualEnv:,chromInfo:,snph5db:,help" -- "w:i:W:v:c:s:d:" $@)
+long_opts="workDir:,fastqId:,waspPath:,virtualEnv:,chromInfo:,snph5db:,help"
+opt=$(getopt -l $long_opts -- "w:i:W:v:c:s:d:" $@)
 eval set -- ${opt}
 while true; do
 	case $1 in
@@ -187,8 +160,8 @@ individual=$(grep $fastqId $sampleIdFile | cut -f2)
 refAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.refAlleleCounts.h5
 altAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.altAlleleCounts.h5
 otherAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.otherAlleleCounts.h5
-readsCounts=$perChromDir/$chromId/${fastqId}_${chromId}.readCounts.h5
-readsCountsInText=$perChromDir/$chromId/${fastqId}_${chromId}.readCountsInText.txt
+readsCounts=$perChromDir/$chromId/${fastqId}_${chromId}.allCounts.h5
+# readsCountsInText=$perChromDir/$chromId/${fastqId}_${chromId}.readCountsInText.txt
 
 python $bam2h5py \
     --chrom $chromInfo \
@@ -201,6 +174,6 @@ python $bam2h5py \
     --alt_as_counts $altAlleleCountsFile \
     --other_as_counts $otherAlleleCountsFile \
     --read_counts $readsCounts \
-    --txt_counts $readsCountsInText \
     $keptMergedSortedRmdupSortBam
+    # --txt_counts $readsCountsInText \
 

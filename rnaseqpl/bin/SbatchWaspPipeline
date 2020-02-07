@@ -1,40 +1,69 @@
 #!/bin/bash
 #
-## A pipeline of Allele-specific expression analysi by Fastp, STAR, WASP and SAMtools
+## ASE analysis pipeline by fastp, STAR, WASP, and SAMtools
 #
 
 set -o errexit
 set -o errtrace
 
-export SCRIPT_VERSOIN="0.1.0"
-export SCRIPT_PATH="$(dirname $(readlink -f $0))"
-export DEBUGME=1
+export WASPPL_SCRIPT_VERSOIN="0.1.0"
+export WASPPL_SCRIPT_PATH="$(dirname $(readlink -f $0))"
 
-ERRO() {
-    echo -e "[E]: $1" >&2 && exit -1
-}
-
-WARN() {
-    echo -e "[W]: $1" >&2
-}
-
-INFO() {
-    echo -e "[I]: $1"
-}
+if [ -f ${WASPPL_SCRIPT_PATH}/utils.sh ]; then
+    source ${WASPPL_SCRIPT_PATH}/utils.sh
+else
+    echo "Failed to load utils.sh, which is mandatory. Exit(-1) ..."
+    exit -1
+fi
 
 echo_version() {
     cat << EOF
 
-$(basename $0), Version ${SCRIPT_VERSOIN:=UNKNOWN}
+$(basename $0), Version ${WASPPL_SCRIPT_VERSOIN:=UNKNOWN}
 
 EOF
 }
 
 echo_help() {
     cat <<EOF
-$(basename $0), Version ${SCRIPT_VERSOIN:=UNKNOWN}
+$(basename $0), Version ${WASPPL_SCRIPT_VERSOIN:=UNKNOWN}
+
+It is recommended to use the a configuration file instead of commandline
+arguments and flags. Please check the \`./config\` file for more information.
 
 Help:
+  -c|--config    Optional.
+      The confituration file to supply values for the variables
+  -w|--workDir    Required.
+      The working directory.
+  -i|--fastqId    Required.
+      The FASTQ files id.
+  -p|--fastqDir    Required.
+      The directory to the FASTQ files.
+  -g|--genomeDir    Required.
+      The path to the genome index.
+  --genomeFastaFile    Required.
+      The path to the FASTA file of genome file.
+  --genomeAnnotationsFile    Required.
+      The path to the gene structure file.
+  --snph5db    Required.
+      The path to the HDF5 database for variants
+  --snp2h5Exe    Optional.
+      The path to the executable snp2h5 by WASP pipeline.
+  --vcfFileDir    Optional
+      The path to the variant call format(VCF) file holding variants information.
+  --chromInfoFile    Required.
+      The file holding chromosome information.
+  --fastah5db    Optional
+      The path to the HDF5 database for geome sequence
+  --fasta2h5Exe   Optional
+      The path to the executable fasta2h5 by WASP pipeline.
+  --waspPath  Required.
+      The path to the WASP tool.
+  --virtualEnv  Required.
+      The path to the python virtual enviroment.
+  --sampleIdFile
+      The path to file holding sample ID.
   -h|--help    Optional. Action: print_info
     Print this help context and exit.
   -V|--version    Optional. Action: store_true
@@ -45,8 +74,15 @@ More information please contact Zhenhua Zhang <zhenhua.zhang217@gmail.com>
 EOF
 }
 
+long_opts=$long_opts"config:,workDir:,"
+long_opts=$long_opts"fastqId:,fastqDir:,"
+long_opts=$long_opts"genomeDir:,genomeFastaFile:,"
+long_opts=$long_opts"snph5db:,snp2h5Exe:,vcfFileDir:,chromInfoFile:,"
+long_opts=$long_opts"fastah5db:,fasta2h5Exe:,"
+long_opts=$long_opts"waspPath:,virtualEnv:,sampleIdFile:,"
+long_opts=$long_opts"help,version"
 
-opt=$(getopt -l "config:,workDir:,fastqId:,fastqDir:,genomeDir:,genomeFastaFile:,genomeAnnotationsFile:,help,version" -- "c:w:i:p:g:f:a:v:" $@)
+opt=$(getopt -l $long_opts -- "c:w:i:p:g:hV" $@)
 eval set -- $opt
 while true; do
     case $1 in
@@ -60,21 +96,20 @@ while true; do
         --genomeFastaFile) shift && genomeFastaFile=$1;;
         --genomeAnnotationsFile) shift && genomeAnnotationsFile=$1 ;;
 
-        --snp2h5Exe) shift && snp2h5Exe=$1 ;;
         --snph5db) shift && snph5db=$1 ;;
+        --snp2h5Exe) shift && snp2h5Exe=$1 ;;
         --vcfFileDir) shift && vcfFileDir=$1 ;;
         --chromInfoFile) shift && chromInfoFile=$1 ;;
 
-        --fasta2h5Exe) shift && fasta2h5Exe=$1 ;;
         --fastah5db) shift && fastah5db=$1 ;;
-        --chromNamePre) shift && chromNamePre=$1 ;;
+        --fasta2h5Exe) shift && fasta2h5Exe=$1 ;;
 
-        --virtualEnv) shift && virtualEnv=$1 ;;
         --waspPath) shift && waspPath=$1 ;;
+        --virtualEnv) shift && virtualEnv=$1 ;;
         --sampleIdFile) shift && sampleIdFile=$1 ;;
 
-        --help) echo_help && exit 0 ;;
-        --version) echo_version && exit 0 ;;
+        -h|--help) echo_help && exit 0 ;;
+        -V|--version) echo_version && exit 0 ;;
         --) shift && break ;;
     esac
     shift
@@ -140,6 +175,7 @@ afterok="--dependency=afterok"  # NOTE: the colon after the afterok is maully ad
 FastpPreproc=$(sbatch --time=0:30:00 --cpus=16 --mem=5G \
     --output=$workDir/logdir/%j-%u-$fastqId-FastpPreprocessing.log \
     --job-name=FastpPreprocessing \
+    --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
     ../scripts/FastpPreprocessing.sh \
     -w $workDir \
     -i $fastqId \
@@ -148,7 +184,8 @@ FastpPreproc=$(sbatch --time=0:30:00 --cpus=16 --mem=5G \
 )
 INFO "FastpPreproc was submitted: $FastpPreproc ..."
 
-# Create STAR genome index. It requires at least 120G memory.
+# TODO: Conflicts between CLI options. If genomeDir is given, genomeFastaFile is not mandatory
+# Create STAR genome index. It requires at least 120G memory and 1.5 hours when using 15 cores.
 # The index was made on human genome build 37, using transcript annotations (V75) downloaded from
 # Ensembl. The genome index should be constructed with annotations.
 if [ -d $genomeDir ]; then
@@ -167,6 +204,7 @@ else
     STARGenomeIndex=$(sbatch --time=1:29:50 --cpus=15 --mem=150G \
         --output=$workDir/logdir/%j-%u-STARBuildGenomeIndex.log \
         --job-name=StarBuildGenomeIndex \
+        --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
         ../scripts/STARBuildGenomeIndex.sh \
         -w $workDir \
         -g $genomeDir \
@@ -184,6 +222,7 @@ STARMapping=$(sbatch $dependency \
     --time=0:39:00 --cpus=20 --mem=50G \
     --output=$workDir/logdir/%j-%u-$fastqId-STARMapping.log \
     --job-name=STARMapping \
+    --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
     ../scripts/STARMapping.sh \
     -w $workDir \
     -g $genomeDir \
@@ -205,6 +244,7 @@ else
         --time=0:29:0 --mem=5G --cpus=1 --array=1-22 \
         --output=$workDir/logdir/%A_%a-%u-WaspCreateSnpHdf5Database.log \
         --job-name=WaspCreateSnpHdf5Database \
+        --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
         ../scripts/WaspCreateSnpHdf5Database.sh \
         -w $workDir \
         -v $vcfFileDir \
@@ -221,12 +261,13 @@ if [ -d $fastah5db ]; then
     INFO "Found $fastah5db, supposing it as a legal fasta HDF5 database, skip WaspCreateFastaHdf5Database.sh"
 else
     WaspCreateFastaHdf5Database=$(sbatch \
-        --time=0:19:0 --mem=5G --cpus=1 --array=1-22 \
+        --time=0:59:0 --mem=5G --cpus=1 \
         --output=$workDir/logdir/%j-%u-WaspCreateFastaHdf5Database.log \
         --job-name=WaspCreateFastaHdf5Database \
+        --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
         ../scripts/WaspCreateFastaHdf5Database.sh \
         -w $workDir \
-        -s $genomeDirPerChrom \
+        -s $genomeFastaFile \
         -c $chromInfoFile \
         -e $fasta2h5Exe \
         | cut -d' ' -f4
@@ -234,10 +275,12 @@ else
     INFO "WaspCreateFastaHdf5Database was submitted: $WaspCreateFastaHdf5Database ..."
 fi
 
+# Find intersected SNPs
 WaspRMBFindIntersectedSnps=$(sbatch $dependency \
     --time=0:25:0 --mem=8G --cpus=1 --ntasks=1 --array=1-22 \
     --output=$workDir/logdir/%A_%a-%u-$fastqId-WaspRMBFindIntersectedSnps.log \
     --job-name=WaspRMBFindIntersectedSnps \
+    --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
     ../scripts/WaspRMBFindIntersectedSnps.sh \
     -w $workDir \
     -i $fastqId \
@@ -250,12 +293,14 @@ WaspRMBFindIntersectedSnps=$(sbatch $dependency \
 INFO "WaspRMBFindIntersectedSnps was submitted: $WaspRMBFindIntersectedSnps ..."
 
 
+# Remapping by STAR
 mkdir -p $workDir/tmpdir/$fastqId/waspTmpdir/starMapping
 dependency=$afterok:$WaspRMBFindIntersectedSnps
 WaspRMBRemapping=$(sbatch $dependency \
     --time=0:25:0 --mem=50G --cpus=15 \
     --output=$workDir/logdir/%j-%u-$fastqId-WaspRMBRemapping.log \
     --job-name=WaspRMBRemapping \
+    --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
     ../scripts/STARMapping.sh \
     -w $workDir \
     -g $genomeDir \
@@ -273,6 +318,7 @@ WaspRMBFilterAndRmDup=$(sbatch $dependency \
     --time=0:25:0 --mem=10G --cpus=1 --ntasks=1 --array=1-22 \
     --output=$workDir/logdir/%A_%a-%u-$fastqId-WaspRMBFilterAndRmDup.log \
     --job-name=WaspRMBFilterAndRmDup \
+    --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
     ../scripts/WaspRMBFilterAndRmDup.sh \
     -w $workDir \
     -i $fastqId \
@@ -291,6 +337,7 @@ sbatch $dependency \
     --time=0:10:0 --mem=20G --cpus=10 --ntasks=1 \
     --output=$workDir/logdir/%j-%u-$fastqId-CollectOutputAndCleanup.log \
     --job-name=CollectOutputAndCleanup \
+    --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
     ../scripts/CollectOutputAndCleanup.sh \
     -w $workDir \
     -i $fastqId \
