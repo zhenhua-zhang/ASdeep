@@ -1,9 +1,0 @@
-# Python version
-python_version == '3.5.3'
-
-# Dependecies for WASP pipeline
-h5py == 2.8.0    # HDF5 manipulation
-numpy == 1.15.0
-scipy == 1.2.0
-pysam == 0.15.0  # BAM files manipulation
-tables == 3.4.3  # PyTables
