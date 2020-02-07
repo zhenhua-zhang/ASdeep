@@ -8,6 +8,7 @@ set -o errtrace
 
 export SCRIPT_VERSOIN="0.1.0"
 export SCRIPT_PATH="$(dirname $(readlink -f $0))"
+export DEBUGME=1
 
 ERRO() {
     echo -e "[E]: $1" >&2 && exit -1
@@ -45,10 +46,11 @@ EOF
 }
 
 
-opt=$(getopt -l "workDir:,fastqId:,fastqDir:,genomeDir:,genomeFastaFile:,genomeAnnotationsFile:,help,version" -- "w:i:p:g:f:a:v:" $@)
+opt=$(getopt -l "config:,workDir:,fastqId:,fastqDir:,genomeDir:,genomeFastaFile:,genomeAnnotationsFile:,help,version" -- "c:w:i:p:g:f:a:v:" $@)
 eval set -- $opt
 while true; do
     case $1 in
+        -c|--config) shift && config=$1 && break ;;
         -w|--workDir) shift && workDir=$1 ;;
 
         -i|--fastqId) shift && fastqId=$1 ;;
@@ -60,8 +62,12 @@ while true; do
 
         --snp2h5Exe) shift && snp2h5Exe=$1 ;;
         --snph5db) shift && snph5db=$1 ;;
+        --vcfFileDir) shift && vcfFileDir=$1 ;;
         --chromInfoFile) shift && chromInfoFile=$1 ;;
-        --vcfFile) shift && vcfFile=$1 ;;
+
+        --fasta2h5Exe) shift && fasta2h5Exe=$1 ;;
+        --fastah5db) shift && fastah5db=$1 ;;
+        --chromNamePre) shift && chromNamePre=$1 ;;
 
         --virtualEnv) shift && virtualEnv=$1 ;;
         --waspPath) shift && waspPath=$1 ;;
@@ -75,10 +81,12 @@ while true; do
 done
 
 # Setup working directories for current project
-" How the working tree looks like
+cat >/dev/null << EOF
+How the working tree looks like
 WORKDIR/
 ├── [genomedir/]
 ├── [snph5db/]
+├── [fastah5db/]
 ├── optdir/
 │   └── FASTQID/
 │       ├── fastpReports/
@@ -91,35 +99,46 @@ WORKDIR/
         └── waspTmpdir/
             ├── perChrom/
             └── starMapping/
-"
+EOF
 
-workDir=${workDir:?-w/--workDir is required}
-fastqId=${fastqId:?-s/--fastqId is required}  # ${fastqId}_R1.fq.gz & ${fastqId}_R2.fq.gz
-fastqDir=${fastqDir:?-p/--fastqDir is required}
+if [ "xxx"$config == "xxx" ]; then
+    workDir=${workDir:?-w/--workDir is required}
+    fastqId=${fastqId:?-s/--fastqId is required}  # ${fastqId}_R1.fq.gz & ${fastqId}_R2.fq.gz
+    fastqDir=${fastqDir:?-p/--fastqDir is required}
 
-if [ $genomeDir"xxx" == "xxx" ]; then
-    if [ $genomeFastaFile"xxx" == "xxx" ]; then
-        ERRO "Either -g/--genomeDir or -f/--genomeFastaFile should be given!"
+    if [ $genomeDir"xxx" == "xxx" ]; then
+        if [ $genomeFastaFile"xxx" == "xxx" ]; then
+            ERRO "Either -g/--genomeDir or -f/--genomeFastaFile should be given!"
+        fi
+
+        # Setup the path of STAR genome index
+        genomeDir=${genomeDir:=$workDir/genomedir}
+    else
+        if [ $genomeFastaFile"xxx" != "xxx" ]; then
+            ERRO "Either -g/--genomeDir or -f/--genomeFastaFile should be given, but not both!"
+        fi
     fi
-
-    # Setup the path of STAR genome index
-    genomeDir=${genomeDir:=$workDir/genomedir}
 else
-    if [ $genomeFastaFile"xxx" != "xxx" ]; then
-        ERRO "Either -g/--genomeDir or -f/--genomeFastaFile should be given, but not both!"
+    if [ -f $config ]; then
+        source $config
+    else
+        ERRO "Not found $config to read"
     fi
 fi
 
-if [ -d $workDir/tmpdir/$fastqId -o -d $workDir/optdir/$fastqId ]; then
-    ERRO "It looks you have worked on $fastqId"
-fi
+# if [ -d $workDir/optdir/$fastqId ]; then
+#     ERRO "It looks you have worked on $fastqId"
+# fi
 
 mkdir -p $workDir/tmpdir/$fastqId/{fastp,star,wasp}Tmpdir
 mkdir -p $workDir/optdir/$fastqId/{fastp,star,wasp}Optdir
+mkdir -p $workDir/logdir
+
+afterok="--dependency=afterok"  # NOTE: the colon after the afterok is maully added
 
 # Preprocessing fastq files. Current only for paired-end FASTQs. It can only use up to 16 CPUs.
 FastpPreproc=$(sbatch --time=0:30:00 --cpus=16 --mem=5G \
-    --output=%j-%u-$fastqId-FastpPreprocessing.log \
+    --output=$workDir/logdir/%j-%u-$fastqId-FastpPreprocessing.log \
     --job-name=FastpPreprocessing \
     ../scripts/FastpPreprocessing.sh \
     -w $workDir \
@@ -127,11 +146,15 @@ FastpPreproc=$(sbatch --time=0:30:00 --cpus=16 --mem=5G \
     -q $fastqDir \
     | cut -d' ' -f4
 )
+INFO "FastpPreproc was submitted: $FastpPreproc ..."
 
 # Create STAR genome index. It requires at least 120G memory.
 # The index was made on human genome build 37, using transcript annotations (V75) downloaded from
 # Ensembl. The genome index should be constructed with annotations.
-if [ ! -d $genomeDir ]; then
+if [ -d $genomeDir ]; then
+    INFO "Found $genomeDir, supposing it as a legal STAR genome index, skip STARGenomeIndex.sh"
+    dependency=$afterok:$FastpPreproc
+else
     if [ $genomeFastaFile"xxx" == "xxx" ]; then
         ERRO "No genome index found, please specify genome fasta file to create the genome index"
     fi
@@ -141,8 +164,8 @@ if [ ! -d $genomeDir ]; then
     fi
 
     mkdir -p $workDir/genomedir
-    STARGenomeIndex=$(sbatch --time=1:59:50 --cpus=10 --mem=130G \
-        --output=%j-%u-$fastqId-STARBuildGenomeIndex.log \
+    STARGenomeIndex=$(sbatch --time=1:29:50 --cpus=15 --mem=150G \
+        --output=$workDir/logdir/%j-%u-STARBuildGenomeIndex.log \
         --job-name=StarBuildGenomeIndex \
         ../scripts/STARBuildGenomeIndex.sh \
         -w $workDir \
@@ -151,94 +174,122 @@ if [ ! -d $genomeDir ]; then
         -a $genomeAnnotationsFile \
         | cut -d' ' -f4
     )
-    dependency=$FastpPreproc:$STARGenomeIndex
-else
-    dependency=$FastpPreproc
-    INFO "Found $genomeDir, supposing it as a legal STAR genome index, skip STARGenomeIndex.sh"
+    INFO "STARGenomeIndex was submitted: $STARGenomeIndex ..."
+    dependency=$afterok:$FastpPreproc:$STARGenomeIndex
 fi
 
+
 # For human genome, it requires at least 40G memory.
-STARMapping=$(sbatch --dependency=afterok:$dependency \
-    --time=0:29:00 --cpus=20 --mem=50G \
-    --output=%j-%u-$fastqId-STARMapping.log \
+STARMapping=$(sbatch $dependency \
+    --time=0:39:00 --cpus=20 --mem=50G \
+    --output=$workDir/logdir/%j-%u-$fastqId-STARMapping.log \
     --job-name=STARMapping \
     ../scripts/STARMapping.sh \
     -w $workDir \
-    -g $genomedir \
+    -g $genomeDir \
     -i $fastqId \
-    -p $workDir/tmpdir/$fastqId/starTmpdir/ \
-    -o $workdir/tmpdir/$fastqId/starTmpdir/$fastqId \
-    --fq1Pattern *R1.fq.gz \
-    --fq2Pattern *R2.fq.gz \
+    -p $workDir/tmpdir/$fastqId/fastpTmpdir/ \
+    -o $workDir/tmpdir/$fastqId/starTmpdir/$fastqId \
+    --fq1Pattern *R1_paired.fq.gz \
+    --fq2Pattern *R2_paired.fq.gz \
     | cut -d' ' -f4
 )
+INFO "STARMapping was submitted: $STARMapping ..."
 
-if [ $snph5db"xxx" == "xxx" -a -d $snph5db ]; then
-    dependency=$STARMapping
+
+if [ -d $snph5db ]; then
+    INFO "Found $snph5db, supposing it as a legal SNP HDF5 database, skip WaspCreateSnpHdf5Database.sh"
+    dependency=$afterok:$STARMapping
 else
     WaspCreateSnpHdf5Database=$(sbatch \
-        --time=2:0:0 --mem=10G --cpus=1 \
-        --output=%j-%u-$fastqId-WaspCreateSnpHdf5Database.log \
+        --time=0:29:0 --mem=5G --cpus=1 --array=1-22 \
+        --output=$workDir/logdir/%A_%a-%u-WaspCreateSnpHdf5Database.log \
         --job-name=WaspCreateSnpHdf5Database \
         ../scripts/WaspCreateSnpHdf5Database.sh \
         -w $workDir \
-        -v $vcfFile \
+        -v $vcfFileDir \
         -c $chromInfoFile \
         -e $snp2h5Exe \
         | cut -d' ' -f4
     )
-    dependency=$STARMapping:$WaspCreateSnpHdf5Database
+    INFO "WaspCreateSnpHdf5Database was submitted: $WaspCreateSnpHdf5Database ..."
+    dependency=$afterok:$STARMapping:$WaspCreateSnpHdf5Database
 fi
 
-WaspFindIntersectSnps=$(sbatch --dependency=afterok:$dependency \
-    --time=0:20:0 --mem=8G --cpus=1 --ntasks=1 --array=1-22 \
-    --output=%A_%a-%u-$fastqId-WaspFindIntersectSnps.log \
-    --job-name=WaspFindIntersectSnps \
-    ../scripts/WaspFindIntersectSnps.sh \
+
+if [ -d $fastah5db ]; then
+    INFO "Found $fastah5db, supposing it as a legal fasta HDF5 database, skip WaspCreateFastaHdf5Database.sh"
+else
+    WaspCreateFastaHdf5Database=$(sbatch \
+        --time=0:19:0 --mem=5G --cpus=1 --array=1-22 \
+        --output=$workDir/logdir/%j-%u-WaspCreateFastaHdf5Database.log \
+        --job-name=WaspCreateFastaHdf5Database \
+        ../scripts/WaspCreateFastaHdf5Database.sh \
+        -w $workDir \
+        -s $genomeDirPerChrom \
+        -c $chromInfoFile \
+        -e $fasta2h5Exe \
+        | cut -d' ' -f4
+    )
+    INFO "WaspCreateFastaHdf5Database was submitted: $WaspCreateFastaHdf5Database ..."
+fi
+
+WaspRMBFindIntersectedSnps=$(sbatch $dependency \
+    --time=0:25:0 --mem=8G --cpus=1 --ntasks=1 --array=1-22 \
+    --output=$workDir/logdir/%A_%a-%u-$fastqId-WaspRMBFindIntersectedSnps.log \
+    --job-name=WaspRMBFindIntersectedSnps \
+    ../scripts/WaspRMBFindIntersectedSnps.sh \
     -w $workDir \
     -i $fastqId \
     -d $snph5db \
     -W $waspPath \
     -v $virtualEnv \
-    -s $sampleIdFile
+    -s $sampleIdFile \
     | cut -d' ' -f4
 )
+INFO "WaspRMBFindIntersectedSnps was submitted: $WaspRMBFindIntersectedSnps ..."
 
-dependency=$WaspFindIntersectSnps
-WaspRemapping=$(sbatch --dependency=afterok:$dependency \
-    --time=0:10:0 --mem=40G --cpus=15 \
-    --output=%j-%u-$fastqId-WaspRemapping.log \
-    --job-name=WaspRemapping \
+
+mkdir -p $workDir/tmpdir/$fastqId/waspTmpdir/starMapping
+dependency=$afterok:$WaspRMBFindIntersectedSnps
+WaspRMBRemapping=$(sbatch $dependency \
+    --time=0:25:0 --mem=50G --cpus=15 \
+    --output=$workDir/logdir/%j-%u-$fastqId-WaspRMBRemapping.log \
+    --job-name=WaspRMBRemapping \
     ../scripts/STARMapping.sh \
     -w $workDir \
-    -g $genomedir \
+    -g $genomeDir \
     -i $fastqId \
-    -p $workDir/tmpdir/$fastqId/waspTmpdir/perChromDir \
-    -o $workdir/tmpdir/$fastqId/waspTmpdir/starMapping/$fastqId \
+    -p $workDir/tmpdir/$fastqId/waspTmpdir/perChrom \
+    -o $workDir/tmpdir/$fastqId/waspTmpdir/starMapping/$fastqId \
     --fq1Pattern */*fq1.gz \
     --fq2Pattern */*fq2.gz \
     | cut -d' ' -f4
 ) 
+INFO "WaspRMBRemapping was submitted: $WaspRMBRemapping ..."
 
-dependency=$WaspRemapping
-WaspSplitAndConquer=$(sbatch --dependency=afterok:$dependency \
-    --time=0:10:0 --mem=10G --cpus=1 --ntasks=1 --array=1-22 \
-    --output=%A_%a-$fastqId-WaspSplitAndConquer.log \
-    --job-name=WaspSplitAndConquer \
-    ../scripts/WaspSplitAndConquer.sh \
+dependency=$afterok:$WaspRMBRemapping
+WaspRMBFilterAndRmDup=$(sbatch $dependency \
+    --time=0:25:0 --mem=10G --cpus=1 --ntasks=1 --array=1-22 \
+    --output=$workDir/logdir/%A_%a-%u-$fastqId-WaspRMBFilterAndRmDup.log \
+    --job-name=WaspRMBFilterAndRmDup \
+    ../scripts/WaspRMBFilterAndRmDup.sh \
     -w $workDir \
     -i $fastqId \
     -d $snph5db \
     -s $sampleIdFile \
     -W $waspPath \
-    -v $virtualEnv
+    -v $virtualEnv \
+    -c $chromInfoFile \
     | cut -d' ' -f4
 )
+INFO "WaspRMBFilterAndRmDup was submitted: $WaspRMBFilterAndRmDup ..."
 
 # Collect output and clean up
-sbatch --dependency=afterok:$dependency \
-    --time=0:10:0 --mem=5G --cpus=10 --ntasks=1 \
-    --output=%j-%u-$fastqId-CollectOutputAndCleanup.log \
+dependency=$afterok:$WaspRMBFilterAndRmDup
+sbatch $dependency \
+    --time=0:10:0 --mem=20G --cpus=10 --ntasks=1 \
+    --output=$workDir/logdir/%j-%u-$fastqId-CollectOutputAndCleanup.log \
     --job-name=CollectOutputAndCleanup \
     ../scripts/CollectOutputAndCleanup.sh \
     -w $workDir \

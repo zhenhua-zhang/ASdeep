@@ -183,24 +183,22 @@ if [ $virtualEnv"xxx" != "xxx" ]; then
 fi
 
 bam2h5py=$waspPath/CHT/bam2h5.py
-individual=$(grep $fastqId $sampleIdFile | cut -f1)
+individual=$(grep $fastqId $sampleIdFile | cut -f2)
 refAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.refAlleleCounts.h5
 altAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.altAlleleCounts.h5
 otherAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.otherAlleleCounts.h5
 readsCounts=$perChromDir/$chromId/${fastqId}_${chromId}.readCounts.h5
-readsCountsInText=$perChromDir/$chromId/${fastqId}_${chromId}.readCountsInText.txt
 
 python $bam2h5py \
     --chrom $chromInfo \
     --test_chrom $chromId \
-    --snp_index $snph5db/snps_index.h5 \
-    --snp_tab $snph5db/snps_tab.h5 \
-    --haplotype $snph5db/haplotype.h5 \
+    --snp_index $snph5db/$chromId/snps_index.h5 \
+    --snp_tab $snph5db/$chromId/snps_tab.h5 \
+    --haplotype $snph5db/$chromId/haplotype.h5 \
     --individual $individual \
     --ref_as_counts $refAlleleCountsFile \
     --alt_as_counts $altAlleleCountsFile \
     --other_as_counts $otherAlleleCountsFile \
     --read_counts $readsCounts \
-    --txt_counts $readsCountsInText \
     $keptMergedSortedRmdupSortBam
 

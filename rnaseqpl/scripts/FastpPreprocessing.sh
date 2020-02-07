@@ -87,7 +87,7 @@ done
 workDir=${workDir:?[E]: -w/--workDir is mandatory}
 fastqId=${fastqId:?[E]: -i/--fastqId is mandatory}
 fastqDir=${fastqDir:?[E]: -p/--fastqDir is mandatory}
-fastpExe=${fastpExe=~/tools/fastp/fastp}
+fastpExe=${fastpExe=~/tools/bin/fastp}
 fastqPrefix=${fastqPrefix:=}
 fastqSuffix=${fastqSuffix:=.fq.gz}
 

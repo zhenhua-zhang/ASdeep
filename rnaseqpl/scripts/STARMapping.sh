@@ -101,15 +101,9 @@ while true; do
 done
 
 workDir=${workDir:?[E]: -w/--workDir is required!}
-workDir=$(readlink -f $workDir)
-
 genomeDir=${genomeDir:?[E]: -g/--genomeDir is required!}
-genomeDir=$(readlink -f $genomeDir)
-
 fastqId=${fastqId:?[E]: -i/--fastqId is required!}
-
 fastqDir=${fastqDir:?[E]: -p/--fastqDir is required!}
-fastqDir=$(readlink -f $fastqDir)
 
 fastqPrefix=${fastqPrefix:=}
 fastqSuffix=${fastqSuffix:=.fq.gz}

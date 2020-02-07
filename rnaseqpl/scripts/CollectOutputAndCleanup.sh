@@ -4,6 +4,8 @@
 set -o errexit
 set -o errtrace
 
+source /apps/modules/modules.bashrc
+
 check_cpus() {
     local n_cpus
     local balance
@@ -62,14 +64,20 @@ mkdir -p $workDir/optdir/$fastqId/{fastp,star,wasp}Optdir
 cp -fr $workDir/tmpdir/$fastqId/fastpTmpdir/*report{.html,.json} $workDir/optdir/$fastqId/fastpOptdir
 cp -fr $workDir/tmpdir/$fastqId/starTmpdir/* $workDir/optdir/$fastqId/starOptdir
 
-cat $workDir/tmpdir/$fastqId/waspTmpdir/perChrom/*/*.readCountsInText.txt \
-    > $workDir/optdir/$fastqId/waspOptdir/$fastqId.readCountsInText.txt
+threads=$(check_cpus)
+~/tools/bin/parallel -j $threads \
+    mkdir $workDir/optdir/$fastqId/waspOptdir/perChrom/{1} \;
+    cp -fr $workDir/tmpdir/$fastqId/waspTmpdir/perChrom/{1}/*.h5 \
+    $workDir/optdir/$fastqId/waspOptdir/perChrom/{1} \
+    ::: {1..22}
+
+# cat $workDir/tmpdir/$fastqId/waspTmpdir/perChrom/*/*.readCountsInText.txt \
+#     > $workDir/optdir/$fastqId/waspOptdir/$fastqId.readCountsInText.txt
 
 module purge
 module load SAMtools
 module list
 
-threads=$(check_cpus)
 samtools merge -fcp \
     -@ $threads \
     $workDir/optdir/$fastqId/waspOptdir/$fastqId.keep.merge.rmdup.bam \
