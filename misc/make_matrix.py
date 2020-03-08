@@ -1,13 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Make matrix"""
+"""Make matrix.
+
+TODO:
+    1. Correct allele-specific reads counts for GC content.
+    2. Correct genotype by genotype likelihood (GL)
+"""
+
 import os
 import sys
-
 from argparse import ArgumentParser
 
-import pysam as ps
+import pysam
+import scipy
+import numpy as np
+import tables
+
+from scipy.stats import binom
+from scipy.stats import betabinom
+from scipy.stats import chi2
+from scipy.optimize import minimize
 
 DNTVEC = [0, 0, 0, 0]  # Base not in ACGTN
 NT2VEC = {"A": [1, 0, 0, 0], "C": [0, 1, 0, 0], "G": [0, 0, 1, 0], "T": [0, 0, 0, 1], "N": [0, 0, 0, 0]}
@@ -56,10 +69,6 @@ def get_args():
         "-a", "--annotations", type=str, dest="annotations", action="store",
         required=True, help="Annotation file in (GFF/GTF). Required"
     )
-    _group.add_argument(
-        "-s", "--alignments", type=str, dest="alignments", action="store",
-        required=True, help="Sequence alignment file (SAM/BAM). Required"
-    )
     return parser
 
 
@@ -94,57 +103,113 @@ class BetaBinomial(object):
     pass
 
 
-class OrfSeqFactory(object):
+class WrongNumberOfParamsError(TypeError):
+    """"""
+    def __str__(self):
+        return "WrongNumberOfParamsError"
+
+class ASEeffectFactory(object):
     """A factory for ORF sequence.
 
     TODO:
         1. Not able to deal with meta-exons.
         2. Which transcript should be considered?
     """
-    def __init__(self, itv_hd=None, var_hd=None, aln_hd=None):
+    def __init__(self, itv_hd=None, var_hd=None):
         self.itv_hd = itv_hd
         self.var_hd = var_hd
-        self.aln_hd = aln_hd
+        self.opt_results = {}
 
-    def count(self):
-        """Count reads mapped to each haplotype for given genomic interval.
+    def bnllh(self, param, k_vec, n_vec):
+        """The likelihood function of Binomial distribution.
         """
-        contig, start, end = self.itv_hd.contig, self.itv_hd.start, self.itv_hd.end
-        itv_vars = self.var_hd.fetch(contig=contig, start=start, stop=end, reopen=True)
-        itv_vars_hash = _make_variant_dict(itv_vars)
+        lh_vec = [binom.logpmf(k, n, param) for k, n in zip(k_vec, n_vec)]
+        return -sum(lh_vec)
 
-        if itv_vars_hash:
-            gene_id = self.itv_hd.gene_id
-            pileup_seg = self.aln_hd.pileup(contig=contig, start=start, stop=end)
-            for pileup_col in pileup_seg:
-                ref_pos = pileup_col.reference_pos
-                # pileups = pileup_col.pileups
-                qry_bases = pileup_col.get_query_sequences(mark_matches=True, mark_ends=True, add_indels=True)
-        else:
-            print("No heterogeous loci in: {}:{}-{}".format(contig, start, end))
-
-    def binomial_test(self):
+    def bntest(self):
         """Do Binomial test on given data.
         """
+        x0 = 0.5
+        k_vec = self.get_k_vec()
+        n_vec = self.get_n_vec()
 
-    def beta_binomial_test(self):
+        opt_results = minimize(
+            self.bnllh, x0, args=(k_vec, n_vec),
+            method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8}
+        )
+        self.opt_results["binomial"] = opt_results
+
+        _est_t = opt_results["x"]
+        estll = opt_results["fun"]
+
+        hyp_t = 0.5
+        hypll = self.bnllh(hyp_t, k_vec, n_vec)
+
+        llr = -2 * (estll - hypll)
+        p = chi2.sf(llr, 1)
+
+        return llr, p
+
+    def bbllh(self, params, k_vec, n_vec):
+        """The likelihood function of Beta-Binomial distribution.
+        """
+        if len(params) != 2:
+            raise WrongNumberOfParamsError("The params should be a list with length 2.")
+
+        bb_a, bb_b = params
+        lh_vec = [betabinom.logpmf(k, n, bb_a, bb_b) for k, n in zip(k_vec, n_vec)]
+        return -sum(lh_vec)
+
+    def bbtest(self):
         """Do Beta-binomial test on given data.
         """
+        x0 = np.array([0.5, 0.5])
+        k_vec = self.get_k_vec()
+        n_vec = self.get_n_vec()
+
+        opt_results = minimize(
+            self.bbllh, x0, args=(k_vec, n_vec),
+            method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8}
+        )
+        self.opt_results["beta_binomial"] = opt_results
+
+        _est_a, _est_b = opt_results["x"]
+        estll = opt_results["fun"]
+
+        hyp_a = hyp_b = opt_results["x"].mean()
+        hypll = self.bbllh((hyp_a, hyp_b), k_vec, n_vec)
+
+        llr = - 2 * (estll - hypll) # The likelihood vale is muliplied by -1
+        p = chi2.sf(llr, 1)
+
+        return (llr, p)
+
+    def get_k_vec(self):
+        return []
+
+    def get_n_vec(self):
+        return []
 
     def ase_test(self, mthd="bb"):
         """Determine whether there is an ASE effects.
         """
         return True
 
+    def chi_square_test(self):
+        """Using a Chi-square test on given data.
+        """
+
+    def correct_gc(self):
+        """"""
+
 
 class NonOrfSeqFactory(object):
     """A factory for non-ORF sequence.
     """
-    def __init__(self, itv_hd=None, seq_hd=None, var_hd=None, aln_hd=None):
+    def __init__(self, itv_hd=None, seq_hd=None, var_hd=None):
         self.itv_hd = itv_hd
         self.seq_hd = seq_hd
         self.var_hd = var_hd
-        self.aln_hd = aln_hd
 
     def seq2matrix(self, seq, var_hash, chrom, shift, target_samples):
         """Make a sequence matrix of upstream of a gene.
@@ -227,29 +292,26 @@ class NonOrfSeqFactory(object):
 class ASEFactory:
     """A factory to work on ASE related files.
     """
-    def __init__(self, itv_hand=None, seq_hand=None, var_hand=None, aln_hand=None):
+    def __init__(self, itv_hand=None, seq_hand=None, var_hand=None):
         self.itv_hd = itv_hand
         self.seq_hd = seq_hand
         self.var_hd = var_hand
-        self.aln_hd = aln_hand
 
     def additvhd(self, itv_file):
-        self.itv_hd = ps.TabixFile(itv_file, parser=ps.asGTF())
+        self.itv_hd = pysam.TabixFile(itv_file, parser=pysam.asGTF())
         return self
 
     def addseqhd(self, seq_file):
-        self.seq_hd = ps.FastaFile(seq_file)
+        self.seq_hd = pysam.FastaFile(seq_file)
         return self
 
     def addvarhd(self, var_file):
-        self.var_hd = ps.VariantFile(var_file, duplicate_filehandle=True)
-        return self
-
-    def addalnhd(self, aln_file):
-        self.aln_hd = ps.AlignmentFile(aln_file, "rb", duplicate_filehandle=True)
+        self.var_hd = pysam.VariantFile(var_file, duplicate_filehandle=True)
         return self
 
     def shutdown(self):
+        """Close all open file handle.
+        """
         if self.itv_hd:
             self.itv_hd.close()
 
@@ -259,42 +321,41 @@ class ASEFactory:
         if self.var_hd:
             self.var_hd.close()
 
-        if self.aln_hd:
-            self.aln_hd.close()
-
     def transform(self, contig="1", up_shift=100, dw_shift=100, target_itvl="ENSG00000187634"):
         """Encode given genomic region.
-
         """
         if not isinstance(target_itvl, list):
             target_itvl = [target_itvl]
 
+        if len(target_itvl) == 0:
+            sys.stderr.write("[W]: The target_itvl is empty.\n")
+            return 0
+
         for itvrc in self.itv_hd.fetch(contig):  # `multiple_iterators` helps create non-consuming iterators
             if not itvrc:
+                sys.stderr.write("[W]: The fetched interval is empty.\n")
                 continue
 
             gene_id = itvrc.gene_id
             if gene_id not in target_itvl:
+                sys.stderr.write("[W]: The given fetched interval includes genes not in the target_itvl, skip it.\n")
                 continue
-
-            if len(target_itvl) == 0:
-                break
 
             target_itvl.remove(gene_id)
 
             feature, start, end, strand = itvrc.feature, itvrc.start, itvrc.end, itvrc.strand
             if feature == "gene": # to parse upstream- and downstream-sequence into a sparse matrix
                 nosf = NonOrfSeqFactory(
-                    aln_hd=self.aln_hd, itv_hd=self.itv_hd,
-                    seq_hd=self.seq_hd, var_hd=self.var_hd
+                    itv_hd=self.itv_hd, seq_hd=self.seq_hd, var_hd=self.var_hd
                 )
-                _reg_matrix = nosf.enc_nc_reg(contig, start, end, strand, dw_shift, up_shift)
+                reg_matrix = nosf.enc_nc_reg(contig, start, end, strand, dw_shift, up_shift)
             elif feature == "exon":  # Make haplotype read count matrix for each exon
-                osf = OrfSeqFactory(itvrc, self.var_hd, self.aln_hd)
-                _ase_effect = osf.ase_test()
+                osf = ASEeffectFactory(itvrc, self.var_hd)
+                ase_effect = osf.ase_test()
             else:
                 print("Skip feature: {} ...".format(feature))
-            print(_ase_effect, _reg_matrix)
+
+            yield ase_effect, reg_matrix
 
 
 def main(): 
@@ -304,15 +365,11 @@ def main():
 
     variants = args.variants
     reference = args.reference
-    alignments = args.alignments
     annotations = args.annotations
 
     factory = ASEFactory()
-    factory.addalnhd(alignments).addseqhd(reference).additvhd(annotations).addvarhd(variants)
-
-    _matrix_pool = factory.transform()
-    print(_matrix_pool)
-
+    factory.addseqhd(reference).additvhd(annotations).addvarhd(variants)
+    factory.transform()
     factory.shutdown()
 
 
