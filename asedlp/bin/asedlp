@@ -1,0 +1,138 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# Author      : Zhenhua Zhang
+# Email       : zhenhua.zhang217@gmail.com
+# License     : MIT
+# Create date : 2020-03-07
+# Last update : 2020-03-07
+
+"""Deep learning methods to predict allele-specific expression effects by
+integrating RNA-seq results and haplotypes.
+
+Note:
+    The package is a allele-specific expression analysis tool using the output
+    from WASP.
+
+Dependency:
+    - Tensforflow (>= 2.0.0)
+    - Matplotlib
+    - PyTables
+    - Pandas
+    - Numpy
+
+Usage:
+
+TDOO:
+    1. The package has many dependencies. However, it doesn't need all the
+    dependencies when running only a sub command, e.g. `quant`. Therefore, a
+    dynamic import of dependencies could be good choice.
+"""
+
+import os
+import sys
+import glob
+import logging
+import argparse
+
+from os import path
+
+import numpy as np
+
+sys.path.append(os.path.split(sys.path[0])[0])
+try:
+    from ased.ASEFactory import ASEFactory
+    from ased.DLPFactory import DLPFactory, CNNModel
+    from ased.zutils import flatten, insert_or_append
+except ImportError as ime:
+    print("Import error:")
+    sys.exit()
+
+
+def get_args():
+    """Get CLI arguments.
+    """
+    parser = argparse.ArgumentParser(description="A package working on allele-specific expression.")
+
+    parser.add_argument("-l", "--log-file", action="store", dest="log_file", default=None, help="The file into which logging write.")
+    parser.add_argument("-v", "--verbose-level", action="count", dest="verbose_level", default=0, help="Verbose level. A counting keyword argument.")
+
+    sub_parsers = parser.add_subparsers(prog="asedlp", dest="subcmd")
+
+    quant_parser = sub_parsers.add_parser("quant", help="Quantification of ASE effects")
+    quant_parser.add_argument("-i", "--sample-id", action="store", required=True, dest="sample_id", help="The sample ID.")
+    quant_parser.add_argument("-g", "--gene-ids", action="store", nargs="+", default=[], dest="gene_ids", help="The gene IDs.")
+    quant_parser.add_argument("-G", "--gene-id-file", action="store", default=None, dest="gene_id_file", help="The file from which read the gene ids.")
+    quant_parser.add_argument("--haplotypes", action="store", default="./haps.h5", dest="haplotypes", help="Path to HDF5 file to read phased haplotypes from.")
+    quant_parser.add_argument("--snp-tab", action="store", default="./snp_tab.h5", dest="snp_tab", help="Path to HDF5 file to read SNP information from.")
+    quant_parser.add_argument("--snp-index", action="store", default="./snp_idex.h5", dest="snp_index", help="Path to HDF5 file to read SNP index from.")
+    quant_parser.add_argument("--sequence-tab", action="store", default="./seq_tab.h5", dest="seq_tab", help="Path to HDF5 file to read reference sequence from.")
+    quant_parser.add_argument("--ref-read-counts", action="store", default="./ref_count_tab.h5", dest="ref_tab", help="Path to HDF5 file to read reference reads counts from.")
+    quant_parser.add_argument("--alt-read-counts", action="store", default="./alt_count_tab.h5", dest="alt_tab", help="Path to HDF5 file to read alternative reads counts from.")
+    quant_parser.add_argument("--genome-annot", action="store", default="./genome.gff", dest="genome_annot", help="Path to GFF / GTF file to read gene structure information from.")
+    quant_parser.add_argument("--shift", action="store", default=1e4, dest="bp_shift", help="Number of base pairs shift from the start codon, the strand will be considered.")
+    quant_parser.add_argument("--save-as-ase-report", action="store", default=None, dest="as_ase_report", help="The file to which write the ASE effect into.")
+    quant_parser.add_argument("--save-as-train-set", action="store", default=None, dest="as_train_set", help="The file to which write the training dataset into.")
+
+    merge_parser = sub_parsers.add_parser("merge", help="Merge multiple train set in Numpy zip files")
+    merge_parser.add_argument("-p", "--file-pattern", action="store", dest="patterns", nargs="+", help="Patterns used to find files to be merged")
+    merge_parser.add_argument("-o", "--output-file", action="store", default="merged_numpy_array.npz", dest="opt_file", help="The file into which write the merged numpy array.")
+
+    train_parser = sub_parsers.add_parser("train", help="Train the model on quantfified ASE effects.")
+    train_parser.add_argument("-t", "--train-set", action="store", default="./trainset.npz", dest="train_set", help="The file from which read the training dataset.")
+    train_parser.add_argument("-g", "--gene-id", action="store", default="all", dest="gene_id", help="The Ensembl id of a gene for which train the model.") 
+
+    return parser.parse_args()
+
+
+def logger(args):
+    pass
+
+
+def quant(args):
+    factory = ASEFactory(args)
+    factory.init() \
+           .gen_gnm_itvl() \
+           .gen_seq_mtrx() \
+           .gen_ase_effect() \
+           .save_ase_report() \
+           .save_train_set() \
+           .shutdown()
+
+
+def merge(args):
+    file_regex_pool = args.patterns
+    file_path_pool = [ glob.glob(file_pattern, recursive=True) for file_pattern in file_regex_pool ]
+    file_path_pool = flatten(file_path_pool)
+
+    merged_numpy_array = {}
+    for file_path in file_path_pool:
+        tmparray = np.load(file_path, mmap_mode='r', allow_pickle=True)
+        merged_numpy_array = insert_or_append(merged_numpy_array, tmparray)
+
+    np.savez(args.opt_file, **merged_numpy_array)
+
+
+def train(args):
+    train_set = args.train_set
+    gene_id = args.gene_id
+
+    factory = DLPFactory()
+    factory.init() \
+           .load_dataset(ts_path=train_set, gene_id=gene_id) \
+           .train()
+
+
+def main():
+    args = get_args()
+    if args.subcmd == "quant":
+        quant(args)
+    elif args.subcmd == "merge":
+        merge(args)
+    elif args.subcmd == 'train':
+        train(args)
+    else:
+        raise Exception("Unknown subcommand")
+
+
+if __name__ == '__main__':
+    main()

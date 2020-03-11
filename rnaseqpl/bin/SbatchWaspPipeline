@@ -26,6 +26,7 @@ EOF
 
 echo_help() {
     cat <<EOF
+
 $(basename $0), Version ${WASPPL_SCRIPT_VERSOIN:=UNKNOWN}
 
 It is recommended to use the a configuration file instead of commandline
@@ -297,7 +298,7 @@ INFO "WaspRMBFindIntersectedSnps was submitted: $WaspRMBFindIntersectedSnps ..."
 mkdir -p $workDir/tmpdir/$fastqId/waspTmpdir/starMapping
 dependency=$afterok:$WaspRMBFindIntersectedSnps
 WaspRMBRemapping=$(sbatch $dependency \
-    --time=0:25:0 --mem=50G --cpus=15 \
+    --time=0:45:0 --mem=50G --cpus=15 \
     --output=$workDir/logdir/%j-%u-$fastqId-WaspRMBRemapping.log \
     --job-name=WaspRMBRemapping \
     --export=WASPPL_SCRIPT_PATH=${WASPPL_SCRIPT_PATH} \
@@ -333,7 +334,7 @@ INFO "WaspRMBFilterAndRmDup was submitted: $WaspRMBFilterAndRmDup ..."
 
 # Collect output and clean up
 dependency=$afterok:$WaspRMBFilterAndRmDup
-sbatch $dependency \
+CollectOutputAndCleanup=$(sbatch $dependency \
     --time=0:10:0 --mem=20G --cpus=10 --ntasks=1 \
     --output=$workDir/logdir/%j-%u-$fastqId-CollectOutputAndCleanup.log \
     --job-name=CollectOutputAndCleanup \
@@ -342,3 +343,4 @@ sbatch $dependency \
     -w $workDir \
     -i $fastqId \
     | cut -d' ' -f4
+)

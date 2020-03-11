@@ -103,3 +103,4 @@ $fastpExe \
     --thread $fastpThreads \
     --dont_overwrite
 
+rm -fr  $fastqFile_1 $fastqFile_2

@@ -19,7 +19,7 @@ check_cpus() {
         || balance=$1
 
     [ $SLURM_CPUS_PER_TASK"x" == "x" ] \
-        && n_cpus=$[ $(grep -c processor /proc/cpuinfo) - $balance ] \
+        && n_cpus=$[ $(grep -wc processor /proc/cpuinfo) - $balance ] \
         || n_cpus=$[ $SLURM_CPUS_PER_TASK - $balance ]
 
     [ $n_cpus -gt 0 ] \

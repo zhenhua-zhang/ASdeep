@@ -5,3 +5,5 @@
 
 archived/
 **/rnaseqpl/configs/
+
+**/*.npz

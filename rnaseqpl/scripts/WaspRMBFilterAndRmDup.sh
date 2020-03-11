@@ -156,7 +156,7 @@ if [ $virtualEnv"xxx" != "xxx" ]; then
 fi
 
 bam2h5py=$waspPath/CHT/bam2h5.py
-individual=$(grep $fastqId $sampleIdFile | cut -f2)
+individual=$(grep -w $fastqId $sampleIdFile | cut -f2)
 refAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.refAlleleCounts.h5
 altAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.altAlleleCounts.h5
 otherAlleleCountsFile=$perChromDir/$chromId/${fastqId}_${chromId}.otherAlleleCounts.h5

@@ -112,6 +112,6 @@ python $findIntersectingSnpsPy \
     --snp_tab $snpTabFile \
     --snp_index $snpIndexFile \
     --haplotype $haplotypeFile \
-    --samples $(grep $fastqId $sampleIdFile | cut -f2) \
+    --samples $(grep -w $fastqId $sampleIdFile | cut -f2) \
     $perChromDir/$chromId/${fastqId}_${chromId}.bam
 

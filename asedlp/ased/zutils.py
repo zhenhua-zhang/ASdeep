@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import re
+import os
 import sys
-import tensorflow as tf
+import glob
+import copy
+import math
+from os import path
 from collections import UserDict
+
+import numpy as np 
+import tensorflow as tf
 
 
 def print_arguments(arguments, fwidth=None, to_head=("subcommand",)):
@@ -97,3 +105,34 @@ def split_train_test(dataset: tf.data.Dataset, test_prop: float = 0.3,
 
 def cmp(a, b):
     return (a > b) - (a < b)
+
+
+def flatten(l):
+    """Flatten a list recursively.
+    Args:
+        l (list): The list to be flatten.
+    Returns:
+        out_list (list): The flatten list.
+    """
+    out_list = []
+    for x in l:
+        if isinstance(x, (list, tuple)):
+            out_list.extend(flatten(x))
+        else:
+            out_list.append(x)
+    return out_list
+
+
+def insert_or_append(dict1, dictlike2):
+    dict1 = copy.deepcopy(dict1)
+
+    if not hasattr(dictlike2, "__getitem__") or not hasattr(dictlike2, "items"):
+        raise AttributeError("dictlike2 should at least has `__getitem__()`, aka `[]`, methods and itesm()")
+
+    for key, val in dictlike2.items():
+        if key in dict1:
+            dict1[key].append(val)
+        else:
+            dict1[key] = [val]
+
+    return dict1

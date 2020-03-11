@@ -2,16 +2,17 @@
 
 import os
 import sys
+import math
 from collections import UserDict
 
+import tables
 import gffutils
 import numpy as np
-import tables
 from scipy.optimize import minimize
 from scipy.stats import binom, chi2, betabinom
 
-from zutils import UserDict
-from zutils import cmp
+from .zutils import UserDict
+from .zutils import cmp
 
 
 class ReadCountPool(UserDict):
@@ -177,8 +178,9 @@ class ASEFactory:
     VEC2NT = {(1, 0, 0, 0): "A", (0, 1, 0, 0): "C", (0, 0, 1, 0): "G", (0, 0, 0, 1): "T"}
 
     _SAMPLE_ID_TO_IDX = None  # Has to be None for there's a if-else branch
-    CHROM = None  # Static
-    SAMPLE_ID = None  # Static
+    _CHROM = None  # Static
+    _SAMPLE_ID = None  # Static
+    _gene_ids = None
     hap_tab, snp_idx, snp_tab, seq_tab, ref_tab, alt_tab, ant_sql = [None] * 7
 
     def __init__(self, args):
@@ -188,10 +190,16 @@ class ASEFactory:
         self.exon_pool = {}
         self.ase_pool = None
         self.ntmtrx_pool = None
-        self._pr_check_args()
 
-    def _pr_check_args(self):  # TODO: haven't been implemented
-        _args = self.args
+    def _parse_gene_ids(self):
+        self._gene_ids = self.args.gene_ids + self._parse_gene_id_file()
+
+    def _parse_gene_id_file(self):
+        if self.args.gene_id_file:
+            with open(self.args.gene_id_file) as gifh:
+                ids = [x.strip("\n") for x in gifh]
+            return ids
+        return []
 
     def _pr_sample_id_to_idx(self, chrom, sample_id="gonl-101b"):
         if self._SAMPLE_ID_TO_IDX is None:
@@ -284,25 +292,22 @@ class ASEFactory:
         exon_pool = self.ant_sql.children(parent_id, featuretype="exon")
 
         # Using list to store each mRNA if necessary.
-        self.CHROM = mrna.seqid
+        self._CHROM = mrna.seqid
         self.mrna_pool[gene_id] = mrna
         self.exon_pool[gene_id] = exon_pool
 
     def _pr_gen_seq_mtrx(self, seq_itvl=None, shift=1e4):
         """Generate a chain of amb for a sequence.
-
-        TODO:
-            1. Allow different size of shrinkage for up- and down-stream.
         """
-        seq_code_pool, snp_indx_pool, snp_code_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self.CHROM, ( "seq", "snp", "hap"))
+        seq_code_pool, snp_indx_pool, snp_code_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._CHROM, ( "seq", "snp", "hap"))
         itvl_start, itvl_stop = int(seq_itvl.start - shift), seq_itvl.start
 
-        sample_idx = self._pr_sample_id_to_idx(self.CHROM, self.SAMPLE_ID)
+        sample_idx = self._pr_sample_id_to_idx(self._CHROM, self._SAMPLE_ID)
         _ntmtrx_pool = [None, None]
         seq_code = seq_code_pool[itvl_start: itvl_stop]
         snp_code = snp_code_pool[itvl_start: itvl_stop]
         ntmtrx = []
-        for a1_code, a2_code in list(zip(seq_code, snp_code)):  # scan the sequence one by one, could be too slow?
+        for a1_code, a2_code in list(zip(seq_code, snp_code)):  # Scan the sequence one by one, could be too slow?
             if a2_code != -1 and hap_phase_pool[a2_code, sample_idx] == 1:  # Is phased
                 snp_info = snp_indx_pool[a2_code]
                 a1_idx, a2_idx = hap_code_pool[a2_code, sample_idx * 2: sample_idx * 2 + 2]
@@ -316,9 +321,9 @@ class ASEFactory:
     def _pr_gen_rcp(self, exon_pool):
         """Generate a ReadCountsPool.
         """
-        ref_rc_pool, alt_rc_pool, snp_code_pool, snp_indx_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self.CHROM, ("rc", "snp", "hap"))
+        ref_rc_pool, alt_rc_pool, snp_code_pool, snp_indx_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._CHROM, ("rc", "snp", "hap"))
 
-        sample_idx = self._pr_sample_id_to_idx(self.CHROM, self.SAMPLE_ID)
+        sample_idx = self._pr_sample_id_to_idx(self._CHROM, self._SAMPLE_ID)
         rcp = ReadCountPool()
         for exon_itvl in exon_pool:
             exon_start, exon_stop = exon_itvl.start - 1, exon_itvl.stop - 1
@@ -367,6 +372,8 @@ class ASEFactory:
         return None
 
     def init(self, ant_db_name=None):
+        """Initialize a factory by loading all needed files.
+        """
         args = self.args
         self.hap_tab = self._pr_try_open(args.haplotypes)
         self.snp_idx = self._pr_try_open(args.snp_index)
@@ -374,7 +381,7 @@ class ASEFactory:
         self.seq_tab = self._pr_try_open(args.seq_tab)
         self.ref_tab = self._pr_try_open(args.ref_tab)
         self.alt_tab = self._pr_try_open(args.alt_tab)
-        self.SAMPLE_ID = args.sample_id
+        self._SAMPLE_ID = args.sample_id
 
         if ant_db_name is None:
             ant_db_name = os.path.splitext(args.genome_annot)[0] + ".db"
@@ -386,16 +393,23 @@ class ASEFactory:
 
         return self
 
-    def gen_gnm_region(self, gene_ids, **kwargs):
-        if not isinstance(gene_ids, list):
-            gene_ids = [gene_ids]
-
-        for _id in gene_ids:
+    def gen_gnm_itvl(self, **kwargs):
+        """Generate genomic intervals from Ensembl gene IDs.
+        """
+        self._parse_gene_ids()
+        for _id in self._gene_ids:
             self._pr_gen_gnm_region(_id, **kwargs)
 
         return self
 
-    def gen_seq_mtrx(self, shift=1e2):
+    def gen_seq_mtrx(self, shift_factor=1e4):
+        """Generage regulatory sequence matrix.
+
+        TODO:
+            1. Add the parameters into logging file
+        """
+        shift = 2 * math.ceil(math.sqrt(shift_factor)) ** 2
+
         if self.mrna_pool:  # Not empty
             self.ntmtrx_pool = {gene_id: self._pr_gen_seq_mtrx(seq_itvl=mrna, shift=shift) for gene_id, mrna in self.mrna_pool.items()}
         else:
@@ -417,21 +431,32 @@ class ASEFactory:
     def save_ase_report(self, opt_file=None):
         """Save the estimated ASE effects into disk.
         """
-        if opt_file is None:
-            opt_file = self.SAMPLE_ID + "_ase_report.txt"
+        if opt_file:
+            opt_file = opt_file
+        elif self.args.as_ase_report:
+            opt_file = self.args.as_ase_report
+        else:
+            opt_file = self._SAMPLE_ID + "_ase_report.txt"
 
-        header = "\t".join(["sample_id", "gene_id", "log_likelihood_ratio", "p_value", "ASE_direction", "SNP_id", "SNP_info", "SNP_phase", "allele_counts"])
+        header = "\t".join(["sample_id", "gene_id", "llh_ratio", "p_val", "ase_direction", "snp_ids", "snp_info", "snp_phase", "allele_counts"])
         with open(opt_file, "wt") as rfh:
             rfh.write(header + "\n")
-            for gene_id, ((llr, p_val, direction), (a1_rc, a2_rc, snp_info)) in self.ase_pool.items():
-                snp_id_chain, snp_rc_chain, snp_pos_chain, snp_phase_chain = [""], ["a1|a2:"], ["chrom,pos,ref,alt:"], ["a1|a2:"]
+
+            for gene_id, ase_effect in self.ase_pool.items():
+                if ase_effect:
+                    (llr, p_val, direction), (a1_rc, a2_rc, snp_info) = ase_effect
+                else:
+                    print("Skipping {} for no ASE effect information".format(gene_id))
+                    continue
+
+                snp_id_chain, snp_rc_chain, snp_pos_chain, snp_phase_chain = [""], ["A1|A2:"], ["CH,PS,REF,ALT:"], ["A1|A2:"]
 
                 for _a1_rc, _a2_rc, ((snp_id, snp_pos, ref, alt), (a1_gntp, a2_gntp)) in zip(a1_rc, a2_rc, snp_info):
                     snp_id = snp_id.decode()
                     ref = ref.decode()
                     alt = alt.decode()
 
-                    snp_pos = self.CHROM + "," + str(snp_pos) + "," + ref + ">" + alt
+                    snp_pos = self._CHROM + "," + str(snp_pos) + "," + ref + ">" + alt
                     snp_phase = str(a1_gntp) + "|" + str(a2_gntp)
                     snp_rc = str(_a1_rc) + "|" + str(_a2_rc)
 
@@ -443,7 +468,7 @@ class ASEFactory:
                     snp_pos_chain.append(snp_pos)
                     snp_phase_chain.append(snp_phase)
 
-                info_list_1 = [self.SAMPLE_ID, gene_id, str(llr), str(p_val), str(direction)]
+                info_list_1 = [self._SAMPLE_ID, gene_id, str(llr), str(p_val), str(direction)]
                 info_list_2 = [x[0] + ";".join(x[1:]) for x in [snp_id_chain, snp_pos_chain, snp_phase_chain, snp_rc_chain]]
 
                 est_result = "\t".join(info_list_1 + info_list_2)
@@ -451,13 +476,23 @@ class ASEFactory:
 
         return self
 
-    def save_for_training(self, opt_file=None):
-        if opt_file is None:
-            opt_file = self.SAMPLE_ID + "_matrix_and_ase.npz"
+    def save_train_set(self, opt_file=None):
+        if opt_file:
+            opt_file = opt_file
+        elif self.args.as_train_set:
+            opt_file = self.args.as_train_set
+        else:
+            opt_file = self._SAMPLE_ID + "_matrix_and_ase.npz"
 
         output_dataset = {}
         for (gene_id, ntmtrx), (_, ase) in zip(self.ntmtrx_pool.items(), self.ase_pool.items()):
-            output_dataset[gene_id] = np.array([ntmtrx, list(ase[0][1:])])
+            if ase:
+                _ase_effect = np.array([ntmtrx, list(ase[0][1:])])
+            else:
+                _ase_effect = np.array([ntmtrx, [1, 0]])
+
+            output_dataset[gene_id] = _ase_effect
+
         np.savez(opt_file, **output_dataset, allow_pickle=True)
 
         return self
@@ -469,3 +504,6 @@ class ASEFactory:
         self._pr_try_close(self.ref_tab)
         self._pr_try_close(self.alt_tab)
         self._pr_try_close(self.seq_tab)
+
+if __name__ == "__main__":
+    print("[W]: This module should not be executed directly.", file=sys.stderr)
