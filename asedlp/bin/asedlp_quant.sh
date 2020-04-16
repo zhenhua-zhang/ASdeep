@@ -1,22 +1,16 @@
 #!/bin/bash
-#SBATCH --time=0:29:0
-#SBATCH --cpus=1
-#SBATCH --mem=5G
-#SBATCH --array=1-2
-#SBATCH --output=%A_%a-%u-asedlp_quant.log
-#SBATCH --job-name=asedlp_quant
 
 # Author     : Zhenhua Zhang
 # Email      : zhenhua.zhang217@gmail.com
 # License    : MIT
 # Create date: Mon 09 Mar 2020 09:22:50 AM CET
-# Last update: Mon 09 Mar 2020 09:23:14 AM CET
+# Last update: Mon 30 Mar 2020 04:31:45 PM CEST
 
 # Run `asedlp quant` which is a python script using job array by slurm.
 # Example:
 
 [ 0 == 1 ] && echo <<EOF
-pjdir=~/Documents/projects/ASECausalSNPPrioritization
+pjdir=~/Documents/projects/ASEDLP
 bash asedlp_quant.sh \
     -w $pjdir/workdir \
     -i AC47H5ACXX-3-18 \
@@ -29,43 +23,51 @@ EOF
 set -o errexit
 set -o errtrace
 
-source /apps/modules/modules.bashrc
 
-module purge
-module load Python/3.6.3-foss-2015b
-module list
+if [[ $(hostname) =~ "genetics" ]]; then
+    echo "On local machine genetics."
+else
+    source /apps/modules/modules.bashrc
+    module purge
+    if [[ $(hostname) =~ "pg-node" || $(hostname) =~ "pg-gpu" ]]; then
+        ml PyTorch/1.3.1-fosscuda-2019b-Python-3.7.4
+    elif [[ $(hostname) =~ "umcg-node" ]]; then
+        module load Python/3.6.3-foss-2015b
+    fi
+    module list
+fi
 
 # TODO: finish the help function
 echo_help() {
     cat <<EOF
 
 Usage:
-  sbatch [sbatch-specific-options] $(basename $0) [this-script-options]
+    sbatch [sbatch-specific-options] $(basename $0) [this-script-options]
 
 Help:
-  -w, --work-dir  Required.
-    The work directory including outputs of rnaseqpl.
+    -w, --work-dir  Required.
+        The work directory including outputs of rnaseqpl.
 
-  -i, --fastq-id  Required.
-    The the ID of fastq files.
+    -i, --fastq-id  Required.
+        The the ID of fastq files.
 
-  -a, --gff-file  Required.
-    The genome feature format (GFF) file for reference genome. The file will be
-    processed in to a SQLite3 database.
+    -a, --gff-file  Required.
+        The genome feature format (GFF) file for reference genome. The file will
+        be processed in to a SQLite3 database.
 
-  -s, --sample-id-file  Required.
-    The file including sample IDs: fastq_id-in-bios to sample-id-in-gonl.
+    -s, --sample-id-file  Required.
+        The file including sample IDs: fastq_id-in-bios to sample-id-in-gonl.
 
-  -G, --gene-id-file-dir  Required.
-    The directory which includes files which gene IDs for each chrommosome. The
-    file should be one line per gene ID and the gene IDs should be Ensembl
-    ID which should also be consistent with ones in GFF files.
+    -G, --gene-id-file-dir  Required.
+        The directory which includes files which gene IDs for each chrommosome.
+        The file should be one line per gene ID and the gene IDs should be
+        Ensembl ID which should also be consistent with ones in GFF files.
 
-  -v, --venv-path  Optional.
-    A Python virtual environment.
+    -v, --venv-path  Optional.
+        A Python virtual environment.
 
-  -h, --help
-    Print this help context and exit.
+    -h, --help
+        Print this help context and exit.
 
 More information please contact Zhenhua Zhang <zhenhua.zhang217@gmail.com>
 

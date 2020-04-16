@@ -11,7 +11,6 @@ from os import path
 from collections import UserDict
 
 import numpy as np 
-import tensorflow as tf
 
 
 def print_arguments(arguments, fwidth=None, to_head=("subcommand",)):
@@ -73,35 +72,6 @@ class SmartDict(UserDict):
         return self.data.copy()
 
 
-def split_train_test(dataset: tf.data.Dataset, test_prop: float = 0.3,
-                     shuffle: bool = True, shuf_buf_size: int = 32,
-                     batch_size: int = 16) -> (tf.data.Dataset, tf.data.Dataset):
-    """Split a dataset into train and test dataset.
-
-    Source: https://stackoverflow.com/questions/51125266/how-do-i-split-tensorflow-datasets
-    """
-    border = int(10 * test_prop)
-
-    recover = lambda x, y: y
-    is_test = lambda x, y: x % 10 < border
-    is_train = lambda x, y: x % 10 >= border
-
-    if shuffle:
-        dataset = dataset.shuffle(shuf_buf_size)
-    train_dtst = dataset.enumerate() \
-            .filter(is_train) \
-            .map(recover) \
-            .batch(batch_size) \
-            .cache()
-
-    test_dtst = dataset.enumerate() \
-            .filter(is_test) \
-            .map(recover) \
-            .batch(batch_size) \
-            .cache()
-
-    return train_dtst, test_dtst
-
 
 def cmp(a, b):
     return (a > b) - (a < b)
@@ -136,3 +106,33 @@ def insert_or_append(dict1, dictlike2):
             dict1[key] = [val]
 
     return dict1
+
+# def split_train_test(dataset: tf.data.Dataset, test_prop: float = 0.3,
+#                      shuffle: bool = True, shuf_buf_size: int = 32,
+#                      batch_size: int = 16) -> (tf.data.Dataset, tf.data.Dataset):
+#     """Split a dataset into train and test dataset.
+# 
+#     Source: https://stackoverflow.com/questions/51125266/how-do-i-split-tensorflow-datasets
+#     """
+#     border = int(10 * test_prop)
+# 
+#     recover = lambda x, y: y
+#     is_test = lambda x, y: x % 10 < border
+#     is_train = lambda x, y: x % 10 >= border
+# 
+#     if shuffle:
+#         dataset = dataset.shuffle(shuf_buf_size)
+#     train_dtst = dataset.enumerate() \
+#             .filter(is_train) \
+#             .map(recover) \
+#             .batch(batch_size) \
+#             .cache()
+# 
+#     test_dtst = dataset.enumerate() \
+#             .filter(is_test) \
+#             .map(recover) \
+#             .batch(batch_size) \
+#             .cache()
+# 
+#     return train_dtst, test_dtst
+

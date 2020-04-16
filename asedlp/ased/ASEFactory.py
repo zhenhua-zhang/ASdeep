@@ -1,13 +1,12 @@
 """ASE factory."""
 
+import math
 import os
 import sys
-import math
-from collections import UserDict
 
-import tables
 import gffutils
 import numpy as np
+import tables
 from scipy.optimize import minimize
 from scipy.stats import binom, chi2, betabinom
 
@@ -38,7 +37,7 @@ class ReadCountPool(UserDict):
     def __len__(self):
         return len(self.data)
 
-    def _p_add(self, itvl_id: str, content: list, add_type="a1"):
+    def _pr_add(self, itvl_id: str, content: list, add_type="a1"):
         """Add counts.
         """
         type_pool = ["a1", "a2", "info"]
@@ -48,13 +47,13 @@ class ReadCountPool(UserDict):
         self.data[itvl_id][type_pool.index(add_type)] = content
 
     def add_a1_rc(self, itvl_id, counts):
-        self._p_add(itvl_id, counts, add_type="a1")
+        self._pr_add(itvl_id, counts, add_type="a1")
 
     def add_a2_rc(self, itvl_id, counts):
-        self._p_add(itvl_id, counts, add_type="a2")
+        self._pr_add(itvl_id, counts, add_type="a2")
 
     def add_loci_info(self, itvl_id, info):
-        self._p_add(itvl_id, info, add_type="info")
+        self._pr_add(itvl_id, info, add_type="info")
 
     def unpack(self):
         """Unpack the object.
@@ -76,11 +75,11 @@ class ASEeffectFactory:
     """
 
     def __init__(self, rc):
-        self.rc = self._p_parse_rc(rc)
+        self.rc = self._pr_parse_rc(rc)
         self.optim_results = {}
 
     @staticmethod
-    def _p_parse_rc(rc):
+    def _pr_parse_rc(rc):
         if isinstance(rc, (tuple, list)) and len(rc) >= 2:
             return rc, []
         elif isinstance(rc, ReadCountPool):
@@ -89,7 +88,7 @@ class ASEeffectFactory:
             raise TypeError("rc parameter should be tuple, list, or ReadCountPool")
 
     @staticmethod
-    def _p_bnllh(param, k_vec, n_vec):
+    def _pr_bnllh(param, k_vec, n_vec):
         """The likelihood function of Binomial distribution.
         """
         lh_vec = [binom.logpmf(k, n, param) for k, n in zip(k_vec, n_vec)]
@@ -99,11 +98,11 @@ class ASEeffectFactory:
         """Do Binomial test on given data.
         """
         x0 = 0.5
-        k_vec = self._p_get_k_vec()
-        n_vec = self._p_get_n_vec()
+        k_vec = self._pr_get_k_vec()
+        n_vec = self._pr_get_n_vec()
 
         opt_results = minimize(
-            self._p_bnllh, x0, args=(k_vec, n_vec),
+            self._pr_bnllh, x0, args=(k_vec, n_vec),
             method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8}
         )
         self.optim_results["binomial"] = opt_results
@@ -112,7 +111,7 @@ class ASEeffectFactory:
         estll = opt_results["fun"]
 
         hyp_t = 0.5
-        hypll = self._p_bnllh(hyp_t, k_vec, n_vec)
+        hypll = self._pr_bnllh(hyp_t, k_vec, n_vec)
 
         llr = - 2 * (estll - hypll)
         p = chi2.sf(llr, 1)
@@ -121,7 +120,7 @@ class ASEeffectFactory:
         return llr, p, cmp(2 * k_sum, n_sum)  # likelihood ratio, p-value, direction
 
     @staticmethod
-    def _p_bbllh(params, k_vec, n_vec):
+    def _pr_bbllh(params, k_vec, n_vec):
         """The likelihood function of Beta-Binomial distribution.
         """
         if len(params) != 2:
@@ -135,11 +134,11 @@ class ASEeffectFactory:
         """Do Beta-binomial test on given data.
         """
         x0 = [0.5, 0.5]
-        k_vec = self._p_get_k_vec()
-        n_vec = self._p_get_n_vec()
+        k_vec = self._pr_get_k_vec()
+        n_vec = self._pr_get_n_vec()
 
         opt_results = minimize(
-            self._p_bbllh, x0, args=(k_vec, n_vec),
+            self._pr_bbllh, x0, args=(k_vec, n_vec),
             method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8}
         )
         self.optim_results["beta_binomial"] = opt_results
@@ -148,7 +147,7 @@ class ASEeffectFactory:
         estll = opt_results["fun"]
 
         hyp_a = hyp_b = opt_results["x"].mean()
-        hypll = self._p_bbllh([hyp_a, hyp_b], k_vec, n_vec)
+        hypll = self._pr_bbllh([hyp_a, hyp_b], k_vec, n_vec)
 
         llr = - 2 * (estll - hypll)  # The likelihood value is timed by -1
         p = chi2.sf(llr, 1)
@@ -156,10 +155,10 @@ class ASEeffectFactory:
         k_sum, n_sum = int(sum(k_vec)), int(sum(n_vec))
         return llr, p, cmp(2 * k_sum, n_sum)  # likelihood ratio, p-value, direction
 
-    def _p_get_k_vec(self):
+    def _pr_get_k_vec(self):
         return self.rc[0]
 
-    def _p_get_n_vec(self):
+    def _pr_get_n_vec(self):
         return list(map(sum, zip(self.rc[0], self.rc[1])))
 
     def chi_square_test(self):
@@ -296,7 +295,7 @@ class ASEFactory:
         self.mrna_pool[gene_id] = mrna
         self.exon_pool[gene_id] = exon_pool
 
-    def _pr_gen_seq_mtrx(self, seq_itvl=None, shift=1e4):
+    def _pr_gen_seq_mtrx(self, seq_itvl=None, shift=5e2):
         """Generate a chain of amb for a sequence.
         """
         seq_code_pool, snp_indx_pool, snp_code_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._CHROM, ( "seq", "snp", "hap"))
@@ -402,7 +401,7 @@ class ASEFactory:
 
         return self
 
-    def gen_seq_mtrx(self, shift_factor=1e4):
+    def gen_seq_mtrx(self, shift_factor=1e3):
         """Generage regulatory sequence matrix.
 
         TODO:
@@ -504,6 +503,7 @@ class ASEFactory:
         self._pr_try_close(self.ref_tab)
         self._pr_try_close(self.alt_tab)
         self._pr_try_close(self.seq_tab)
+
 
 if __name__ == "__main__":
     print("[W]: This module should not be executed directly.", file=sys.stderr)

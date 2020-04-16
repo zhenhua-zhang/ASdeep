@@ -7,7 +7,7 @@ for id_to_id in $(awk '{print $1";"$2}' ${id_to_id_file});do
     gonl_id=${id_to_id##*;}
     cat > ../configs/${fastq_id}_${gonl_id}_config <<EOF
 # Configuraton file for SbatchWaspPipeline working on ${fastq_id}
-projdir=/groups/umcg-bios/tmp04/umcg-zzhang/projects/ASECausalSNPPrioritization
+projdir=/groups/umcg-bios/tmp04/umcg-zzhang/projects/ASEDLP
 workDir=\${projdir}/workdir
 
 # fastp

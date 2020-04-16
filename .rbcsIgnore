@@ -1,3 +1,4 @@
 # Excluding the following files
-**/*.db
-**/__*
+.env/
+**/__*__/
+**/*.pyc

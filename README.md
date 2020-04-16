@@ -56,7 +56,7 @@ Connonical SNPs:
 We have many options but we chose WASP to correct the allelic mapping bias.
 Actually I had been hasitating between hard-mask [by Niek et.] and WASP
 pipepline. This [post](https://www.biostars.org/p/290455/) pushed me to choose
-the later. Refere to Lude's paper on an allelic expression analysis on GoNL and
+the later. Referee to Lude's paper on an allelic expression analysis on GoNL and
 BIOS cohort.
 
 7. How to compile `snp2h5 / fasta2h5` on cluster?

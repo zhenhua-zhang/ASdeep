@@ -1,20 +1,27 @@
+#!/bin/bash
+
+# Author     : Zhenhua Zhang
+# Email      : zhenhua.zhang217@gmail.com
+# License    : MIT
+# Create date: Mon 09 Mar 2020 09:22:50 AM CET
+# Last update: Mon 30 Mar 2020 04:31:20 PM CEST
+
 # One time script
-pjdir=~/Documents/projects/ASECausalSNPPrioritization
+pjdir=/groups/umcg-bios/tmp04/umcg-zzhang/projects/ASEDLP
 
-# AC30WRACXX-7-3 AC30WRACXX-7-4 AC30WRACXX-7-5 AC30WRACXX-8-11 AC30WRACXX-8-12
-# AC30WRACXX-8-15 AC42BTACXX-4-15 AC43GJACXX-1-4 AC43GJACXX-2-11 AC43GJACXX-2-19
-# AC43GJACXX-3-1 AC43GJACXX-3-4 AC43GJACXX-3-5 AC43GJACXX-4-14 AC43GJACXX-4-9
-# AC43GJACXX-5-1 AC43GJACXX-5-18 AC43GJACXX-5-21 AC43GJACXX-5-25 AC43GJACXX-5-27
-# AC43GJACXX-6-11 AC43GJACXX-6-4 AC43GJACXX-6-5 AC43GJACXX-7-13 AC43GJACXX-7-14
-# AC43GJACXX-7-15 AC43GJACXX-7-18 AC43GJACXX-7-22 AC43GJACXX-8-2 AC43GJACXX-8-27
-# AC43LCACXX-2-6 AC43LCACXX-4-2 AC43LCACXX-4-3 AC43LCACXX-6-1 AC43LCACXX-6-21
-# AC43LCACXX-6-27 AC43LCACXX-7-10 AC43LCACXX-7-13 AC43LCACXX-7-5 AC43LCACXX-7-8
-# AC43LCACXX-8-15 AC43LCACXX-8-21 AC43LCACXX-8-22 AC43LCACXX-8-23
-# AC43LCACXX-8-27 AC43P5ACXX-3-13 AC43P5ACXX-4-14 AC43P5ACXX-4-15
-# AC43P5ACXX-4-16 AC43P5ACXX-4-21 AC43P5ACXX-4-23 AC43P5ACXX-4-25 AC43P5ACXX-5-2
-# AC43P5ACXX-5-5 AC43P5ACXX-5-8 AC43P5ACXX-6-10 AC43P5ACXX-6-12 AC43P5ACXX-6-14
-# AC43P5ACXX-6-19 AC43P5ACXX-7-5 AC47H5ACXX-1-1 AC47H5ACXX-1-19
-
-for fastq_id in AC1JV9ACXX-1-18 AC1JV9ACXX-2-20 AC1JV9ACXX-2-21 AC1JV9ACXX-2-22 AC1JV9ACXX-2-23 AC1JV9ACXX-2-25 AC30WRACXX-6-12 AC30WRACXX-6-13 AC30WRACXX-6-21 AC30WRACXX-7-2; do
-    sbatch asedlp_quant.sh -w $pjdir/workdir -i $fastq_id -a $pjdir/inputs/Ensembl_references/Homo_sapiens.GRCh37.75.gtf -s $pjdir/misc/freeze2_GoNL_related_GTE_30092016_QCpassed.csv -G $pjdir/inputs/Ensembl_references -v $pjdir/scripts/.env/bin/activate
-done
+while read fastq_id; do
+    sbatch \
+        --time 0:29:0 \
+        --cpus 1 \
+        --mem 5G \
+        --array 1-22 \
+        --job-name asedlp_quant \
+        --output $pjdir/workdir/logdir/%A_%a-%u-${fastq_id}_asedlp_quant.log \
+        asedlp_quant.sh \
+        -w $pjdir/workdir \
+        -i $fastq_id \
+        -a $pjdir/inputs/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \
+        -s $pjdir/misc/freeze2_GoNL_related_GTE_30092016_QCpassed.csv \
+        -G $pjdir/inputs/Ensembl_references \
+        -v $pjdir/scripts/.env/bin/activate
+done < 
