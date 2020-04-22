@@ -7,19 +7,29 @@
 # Created date: Thu 12 Mar 2020 05:44:52 PM CET
 # Last update : Mon 30 Mar 2020 04:32:17 PM CEST
 
-"""A module to train a convolutionary neural network."""
+"""A module to train a convolutionary neural network.
+
+```
+Example:
+    TODO
+
+```
+"""
+
 import sys
 import math
 import glob
 import logging
 import warnings
 
+warnings.filterwarnings("ignore")
+
 import numpy as np
-import sklearn.model_selection as skms
+
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics.classification import accuracy_score, precision_score, recall_score
 
 from statsmodels.sandbox.stats.multicomp import multipletests
-
-warnings.filterwarnings("ignore")
 
 logger = logging.getLogger("pytorch")
 logger.setLevel(logging.ERROR)
@@ -27,10 +37,10 @@ logger.setLevel(logging.ERROR)
 logger = logging.getLogger()
 fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}", datefmt="%Y-%m-%d %H:%M:%S %p", style="{")
 cs_handle = logging.StreamHandler()
-cs_handle.setLevel(logging.INFO)
+cs_handle.setLevel(logging.DEBUG)
 cs_handle.setFormatter(fmt)
 logger.addHandler(cs_handle)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 try:
     import torch
@@ -50,10 +60,10 @@ class ASEDataset(Dataset):
         Args:
             gene_id   (string): Gene ID (Ensembl gene ID) to train on.
             file_pat  (string): Pattern to find the numpy file.
-            element_trans (callable, optional): Optional transfrom to be applied on
-            a sample.
-            dataset_trans (callable, optional): Optional transfrom to be applied on
-            the whole dataset.
+            element_trans (callable, optional): Optional transfrom to be applied
+            on a sample.
+            dataset_trans (callable, optional): Optional transfrom to be applied
+            on the whole dataset.
 
         NOTE:
             1. In previous implementation, it's not handy to do multiple-test
@@ -130,7 +140,10 @@ class ASEDataset(Dataset):
 
 
 class MultipleTestAdjustMent(object):
-    """Adjust p-values for multiple tests."""
+    """Adjust p-values for multiple tests.
+
+    This class is a dataset-wide transformer.
+    """
 
     def __init__(self, alpha=0.05, method="fdr_bh"):
         self.alpha = 0.05
@@ -153,6 +166,7 @@ class MultipleTestAdjustMent(object):
 class ReshapeMatrixAndPickupLabel(object):
     """Reshape the sequence matrix into a given size.
 
+    This class is an element-wise transformer.
     Args:
         -1, 0, 1 reprsents ASE effect prone to allele A, no ASE effects, ASE
         Effects prone to allele B in the raw ASE quantification results,
@@ -178,48 +192,159 @@ class ReshapeMatrixAndPickupLabel(object):
 
 
 class CNNModel(nn.Module):
+    """A built-in CNN model for the package.
+    """
+
     def __init__(self):
         super(CNNModel, self).__init__()
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv1 = nn.Conv2d(1, 4, 3)
-        self.conv2 = nn.Conv2d(4, 8, 3)
-        self.conv3 = nn.Conv2d(8, 16, 3)
-        self.conv4 = nn.Conv2d(16, 32, 3)
-        self.conv5 = nn.Conv2d(32, 16, 3)
+
+        self.conv01 = nn.Conv2d(1, 8, 3, padding=1)
+        self.conv02 = nn.Conv2d(8, 16, 3, padding=1)
+        self.conv03 = nn.Conv2d(16, 32, 3, padding=1)
+        self.conv04 = nn.Conv2d(32, 64, 3, padding=1)
+        self.pool0 = nn.MaxPool2d(3, 1, 1)  # H=128, W=128
+
+        self.conv11 = nn.Conv2d(64, 32, 3, padding=1)
+        self.conv12 = nn.Conv2d(32, 16, 3, padding=1)
+        self.conv13 = nn.Conv2d(16, 8, 3, padding=1)
+        self.conv14 = nn.Conv2d(8, 4, 3, padding=1)
+        self.pool1 = nn.MaxPool2d(5, 1)  # H=124, W=124
+
+        self.conv21 = nn.Conv2d(4, 16, 3, padding=1)
+        self.conv22 = nn.Conv2d(16, 32, 3, padding=1)
+        self.conv23 = nn.Conv2d(32, 128, 3, padding=1)
+        self.conv24 = nn.Conv2d(128, 256, 3, padding=1)
+        self.pool2 = nn.MaxPool2d(5, 1)  # H=120, W=120
+
+        self.conv31 = nn.Conv2d(256, 128, 3, padding=1)
+        self.conv32 = nn.Conv2d(128, 64, 3, padding=1)
+        self.conv33 = nn.Conv2d(64, 32, 3, padding=1)
+        self.conv34 = nn.Conv2d(32, 16, 3, padding=1)
+        self.pool3 = nn.MaxPool2d(5, 1)  # H=116, W=116
+
+        self.conv41 = nn.Conv2d(16, 32, 3, padding=1)
+        self.conv42 = nn.Conv2d(32, 64, 3, padding=1)
+        self.conv43 = nn.Conv2d(64, 128, 3, padding=1)
+        self.conv44 = nn.Conv2d(128, 256, 3, padding=1)
+        self.pool4 = nn.MaxPool2d(5, 1)  # H=112, W=112
+
+        self.conv51 = nn.Conv2d(256, 128, 3, padding=1)
+        self.conv52 = nn.Conv2d(128, 64, 3, padding=1)
+        self.conv53 = nn.Conv2d(64, 32, 3, padding=1)
+        self.conv54 = nn.Conv2d(32, 16, 3, padding=1)
+        self.pool5 = nn.MaxPool2d(7, 1)  # H=106, W=106
+
+        self.conv61 = nn.Conv2d(16, 32, 3, padding=1)
+        self.conv62 = nn.Conv2d(32, 64, 3, padding=1)
+        self.conv63 = nn.Conv2d(64, 128, 3, padding=1)
+        self.conv64 = nn.Conv2d(128, 256, 3, padding=1)
+        self.pool6 = nn.MaxPool2d(9, 1)  # H=98, W=98
+
+        self.conv71 = nn.Conv2d(256, 128, 3, padding=1)
+        self.conv72 = nn.Conv2d(128, 64, 3, padding=1)
+        self.conv73 = nn.Conv2d(64, 32, 3, padding=1)
+        self.conv74 = nn.Conv2d(32, 16, 3, padding=1)
+        self.pool7 = nn.MaxPool2d(11, 1)  # H=88, W=88
+
+        self.conv81 = nn.Conv2d(16, 32, 3, padding=1)
+        self.conv82 = nn.Conv2d(32, 64, 3, padding=1)
+        self.conv83 = nn.Conv2d(64, 128, 3, padding=1)
+        self.conv84 = nn.Conv2d(128, 256, 3, padding=1)
+        self.pool8 = nn.MaxPool2d(13, 1)  # H=76, W=76
+
+        self.conv91 = nn.Conv2d(256, 128, 3, padding=1)
+        self.conv92 = nn.Conv2d(128, 64, 3, padding=1)
+        self.conv93 = nn.Conv2d(64, 32, 3, padding=1)
+        self.conv94 = nn.Conv2d(32, 4, 3, padding=1)
+        self.pool9 = nn.MaxPool2d(13, 1)  # H=64, W=64
+
         self.flat = nn.Flatten()
-        self.fc1 = nn.Linear(2*2*16, 1024)
-        self.fc2 = nn.Linear(1024, 512)
-        self.fc3 = nn.Linear(512, 256)
-        self.fc4 = nn.Linear(256, 128)
-        self.fc5 = nn.Linear(128, 64)
-        self.fc6 = nn.Linear(64, 3)
+        self.fc1 = nn.Linear(64*64*4, 16)
+        self.fc2 = nn.Linear(16, 8)
+        self.fc3 = nn.Linear(8, 3)
 
     def forward(self, x):
-        x = self.pool(func.relu(self.conv1(x)))
-        x = self.pool(func.relu(self.conv2(x)))
-        x = self.pool(func.relu(self.conv3(x)))
-        x = self.pool(func.relu(self.conv4(x)))
-        x = self.pool(func.relu(self.conv5(x)))
+        x = func.relu(self.conv01(x))
+        x = func.relu(self.conv02(x))
+        x = func.relu(self.conv03(x))
+        x = func.relu(self.conv04(x))
+        x = self.pool0(x)
+
+        x = func.relu(self.conv11(x))
+        x = func.relu(self.conv12(x))
+        x = func.relu(self.conv13(x))
+        x = func.relu(self.conv14(x))
+        x = self.pool1(x)
+
+        x = func.relu(self.conv21(x))
+        x = func.relu(self.conv22(x))
+        x = func.relu(self.conv23(x))
+        x = func.relu(self.conv24(x))
+        x = self.pool2(x)
+
+        x = func.relu(self.conv31(x))
+        x = func.relu(self.conv32(x))
+        x = func.relu(self.conv33(x))
+        x = func.relu(self.conv34(x))
+        x = self.pool3(x)
+
+        x = func.relu(self.conv41(x))
+        x = func.relu(self.conv42(x))
+        x = func.relu(self.conv43(x))
+        x = func.relu(self.conv44(x))
+        x = self.pool4(x)
+
+        x = func.relu(self.conv51(x))
+        x = func.relu(self.conv52(x))
+        x = func.relu(self.conv53(x))
+        x = func.relu(self.conv54(x))
+        x = self.pool5(x)
+
+        x = func.relu(self.conv61(x))
+        x = func.relu(self.conv62(x))
+        x = func.relu(self.conv63(x))
+        x = func.relu(self.conv64(x))
+        x = self.pool6(x)
+
+        x = func.relu(self.conv71(x))
+        x = func.relu(self.conv72(x))
+        x = func.relu(self.conv73(x))
+        x = func.relu(self.conv74(x))
+        x = self.pool7(x)
+
+        x = func.relu(self.conv81(x))
+        x = func.relu(self.conv82(x))
+        x = func.relu(self.conv83(x))
+        x = func.relu(self.conv84(x))
+        x = self.pool8(x)
+
+        x = func.relu(self.conv91(x))
+        x = func.relu(self.conv92(x))
+        x = func.relu(self.conv93(x))
+        x = func.relu(self.conv94(x))
+        x = self.pool9(x)
+
         x = self.flat(x)
         x = func.relu(self.fc1(x))
         x = func.relu(self.fc2(x))
-        x = func.relu(self.fc3(x))
-        x = func.relu(self.fc4(x))
-        x = func.relu(self.fc5(x))
-        return func.sigmoid(self.fc6(x))
+
+        return func.sigmoid(self.fc3(x))
 
 
 class DLPFactory:
-    def __init__(self, net, gene_id=None, file_pat=None, signature="train", togpu=False):
+    """A class to train the neuroal network.
+    """
+
+    def __init__(self, net, gene_id=None, file_pat=None, togpu=False):
         self.net = net
         self.togpu = togpu
         self.gene_id = gene_id
         self.file_pat = file_pat
-        self.signature = signature
         self.dataset = None
         self.splits = None
 
-    def _pr_check_device(self):
+    @staticmethod
+    def _pr_check_device():
         return "cuda:0" if torch.cuda.is_available() else "cpu"
 
     def _pr_test(self, model_state: str = None, testloader: DataLoader = None):
@@ -228,45 +353,47 @@ class DLPFactory:
             if model_state is not None:
                 self.net.load_state_dict(torch.load(model_state))
             else:
-                logger.error("The model has NOT trained, please supply the model state")
+                logger.error("The model has NOT trained, require model states")
                 sys.exit()
-
-        correct = 0
-        total = 0
 
         if testloader is None:
             logger.error("Missing testloader!! Exit...")
-            return self
+            return None
 
+        true_list, pred_list = [], []
+        device = self._pr_check_device()
         with torch.no_grad():
             for data in testloader:
-                matrix, labels = data
+                matrix, labels = data[0].to(device), data[1].to(device)
                 outputs = self.net(matrix)
-
                 _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
 
-        logger.info("Accuracy of the network on the test matrix: {} %".format(100 * correct / total))
+                true_list.extend(labels.to("cpu"))
+                pred_list.extend(predicted.to("cpu"))
+
+        precision = precision_score(true_list, pred_list, average="macro") * 100
+        recall = recall_score(true_list, pred_list, average="macro") * 100
+        accuracy = accuracy_score(true_list, pred_list) * 100
+
+        logger.info("Precision: {:.3}%. Recall: {:.3}%. Accuracy: {:.3}%".format(precision, recall, accuracy))
+
+        return None
 
     def init(self):
         # Check GPU or CPU
         device = self._pr_check_device()
         self.net.to(device)
-
         return self
 
-    def load_dataset(self, train_prop=0.8, **kwargs):
-        """Load the dataset for train or test."""
-        # Create a dataset
+    def load_dataset(self, **kwargs):
+        """Load the dataset for train or test.
+        """
         gene_id = kwargs.get("gene_id", self.gene_id)
         file_pat = kwargs.get("file_pat", self.file_pat)
         element_trans = kwargs.get("element_trans", ReshapeMatrixAndPickupLabel())
         dataset_trans = kwargs.get("dataset_trans", MultipleTestAdjustMent())
 
-        self.dataset = ASEDataset(file_pat=file_pat, gene_id=gene_id,
-                                  element_trans=element_trans,
-                                  dataset_trans=dataset_trans)
+        self.dataset = ASEDataset(file_pat=file_pat, gene_id=gene_id, element_trans=element_trans, dataset_trans=dataset_trans)
 
         return self
 
@@ -274,11 +401,10 @@ class DLPFactory:
         """Split the dataset into given number of splits for cross-validation.
         """
         lables = list(self.dataset.get_labels())
-        index = range(len(self.dataset))
+        matrix = list(self.dataset.get_matrix())
 
-        skf = skms.StratifiedKFold(n_splits=n_splits)
-        splits = skf.get_n_splits(X=index, y=lables)
-        self.splits = splits
+        skf = StratifiedKFold(n_splits=n_splits)
+        self.splits = skf.split(X=matrix, y=lables)
 
         return self
 
@@ -286,22 +412,17 @@ class DLPFactory:
         """Train the model."""
         if criterion is None:
             criterion = nn.CrossEntropyLoss()
-        if optimizer is None:
-            optimizer = optim.Adam(self.net.parameters(), lr=0.001)
 
-        device = self._pr_check_device()
+        if optimizer is None:
+            optimizer = optim.Adam(self.net.parameters(), lr=0.0001)
 
         batch_size = kwargs.get('batch_size', 8)
         shuffle = kwargs.get("shuffle", False)
         num_workers = kwargs.get("num_workers", 4)
-
+        device = self._pr_check_device()
         for cv_idx, (cv_train_idx, cv_test_idx) in enumerate(self.splits):
-            trainloader = DataLoader(
-                Subset(self.dataset, cv_train_idx), batch_size=batch_size,
-                shuffle=shuffle, num_workers=num_workers)  # Train dataset
-            testloader = DataLoader(
-                Subset(self.dataset, cv_test_idx), batch_size=batch_size,
-                shuffle=shuffle, num_workers=num_workers)   # Test dataset
+            trainloader = DataLoader(Subset(self.dataset, cv_train_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+            testloader = DataLoader(Subset(self.dataset, cv_test_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
             logger.info("Cross validation {}".format(cv_idx))
             for epoch in range(eps):
@@ -319,21 +440,34 @@ class DLPFactory:
 
                 if epoch % 10 == 9:
                     logger.info("Epoch: {}, loss: {}".format(epoch+1, running_loss / 10))
+
                 running_loss = 0.0
 
-            self._pr_test(testloader)
+            self._pr_test(self.net, testloader)
 
         return self
 
     def save_model(self, path):
+        """Save the trained model, typlically the state dictionary.
+        """
         if self.net is None:
             logger.error("The mode is empty, have you ever run the train() method?")
             sys.exit()
 
         torch.save(self.net.state_dict(), path)
+
         return self
 
     def test(self, model_state: str = None, testloader: DataLoader = None):
+        """Test for new dataset.
+        """
         self._pr_test(model_state, testloader)
+
+        return self
+
+    def predict(self, matrix=None):
+        """Apply the model on given dataset.
+        """
+        logger.warnings("Note implemented yet!")
 
         return self

@@ -1,4 +1,12 @@
 #!/bin/bash
+#SBATCH --mem=5G
+#SBATCH --time=0:59:0
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --partition=gpu
+#SBATCH --output=%j.%u.batch_asedlp_train.log
+#SBATCH --job-name=batch_asedlp_train
 #
 # File name : asedlp_train.sh
 # Author    : zhzhang
@@ -42,6 +50,10 @@ while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do
             shift && gene_id=$1 ;;
         -s | --model-state-path)
             shift && model_state_path=$1 ;;
+        -c | --cv-times)
+            shift && cv_times=$1 ;;
+        -n | --n-epoch)
+            shift && n_epoch=$1 ;;
         -h | --help)
             echo_help ;;
         --)
@@ -71,10 +83,13 @@ else
     module list
 fi
 
-
-echo ./asedlp train --file-pat "${file_pat}" --gene-id "${gene_id}" --model-state-path "${model_state_path}"
+file_pat=${file_pat:='../../../workdir/optdir/**/aseOptdir/train_set/*_17_matrix_and_ase.npz'}
+gene_id=${gene_id:=ENSG00000108405}
+model_state_path=${model_state_path:=${gene_id}.ptz}
 
 ./asedlp train \
     --file-pat "${file_pat}" \
     --gene-id "${gene_id}" \
+    --cv-times "${cv_times:=8}" \
+    --n-epoch "${n_epoch:=15}" \
     --model-state-path "${model_state_path}"

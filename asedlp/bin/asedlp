@@ -4,7 +4,7 @@
 # Email       : zhenhua.zhang217@gmail.com
 # License     : MIT
 # Create date : 2020-03-07
-# Last update : Mon 30 Mar 2020 04:32:04 PM CEST
+# Last update : 2020 Apr 18 14:46:58
 
 """Deep learning methods to predict allele-specific expression effects by
 integrating RNA-seq results and haplotypes.
@@ -14,7 +14,7 @@ Note:
     from WASP.
 
 Dependency:
-    - PyTorch (>= 2.0.0)
+    - PyTorch (>= 1.4.0)
     - Matplotlib
     - PyTables
     - Pandas
@@ -23,46 +23,40 @@ Dependency:
 Usage:
 
 TDOO:
-    1. The package has many dependencies. However, it doesn't need all the
-    dependencies when running only a sub command, e.g. `quant`. Therefore, a
-    dynamic import of dependencies could be good choice.
 """
 
+import argparse
+import logging
+import math
 import os
 import sys
-import math
-import argparse
-
-import logging
 
 import pandas as pds
-import seaborn as sbn
 from statsmodels.stats.multitest import fdrcorrection
+
+import seaborn as sbn
 
 sys.path.append(os.path.split(sys.path[0])[0])
 
 logger = logging.getLogger("matplotlib")
 logger.setLevel(logging.INFO)
-
 logger = logging.getLogger(__name__)
 fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}", datefmt="%Y-%m-%d %H:%M:%S %p", style="{")
 cs_handle = logging.StreamHandler()
 cs_handle.setLevel(logging.DEBUG)
 cs_handle.setFormatter(fmt)
 logger.addHandler(cs_handle)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 def get_args():
     """Get CLI arguments.
     """
     parser = argparse.ArgumentParser(description="A package working on allele-specific expression.")
-
     parser.add_argument("-l", "--log-file", action="store", dest="log_file", default=None, help="The file into which logging write.")
     parser.add_argument("-v", "--verbose-level", action="count", dest="verbose_level", default=0, help="Verbose level. A counting keyword argument.")
 
     sub_parsers = parser.add_subparsers(prog="asedlp", dest="subcmd")
-
     quant_parser = sub_parsers.add_parser("quant", help="Quantification of ASE effects")
     quant_parser.add_argument("-i", "--sample-id", required=True, dest="sample_id", help="The sample ID.")
     quant_parser.add_argument("-g", "--gene-ids", nargs="+", default=[], dest="gene_ids", help="The gene IDs. Default: %(default)s")
@@ -80,19 +74,19 @@ def get_args():
 
     merge_parser = sub_parsers.add_parser("merge", help="Merge allele specific expression quantification report by subcommand quant")
     merge_parser.add_argument("-r", "--report-files", required=True, dest="report_files", nargs="*", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser. Default: %(default)s")
-    merge_parser.add_argument("-o", "--save-prefix", default="heatmap.pdf", dest="save_prefix", help="The file to which write the heatmap into. Default: %(default)s")
-    merge_parser.add_argument("-p", "--split-by-chrom", dest="split_by_chrom", help="Whether split the merged results by chromsome. Default: %(default)s")
+    merge_parser.add_argument("-p", "--save-prefix", default="heatmap.pdf", dest="save_prefix", help="The file to which write the heatmap into. Default: %(default)s")
+    merge_parser.add_argument("--genome-annot", default="./genome.gff", dest="genome_annot", help="Path to GFF / GTF file to read gene structure information from. Default: %(default)s")
 
     train_parser = sub_parsers.add_parser("train", help="Train the model on quantfified ASE effects.")
     train_parser.add_argument("-p", "--file-pat", required=True, dest="file_pat", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser. Default: %(default)s")
-    train_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", help="The Ensembl id of a gene for which train the model. Default: %(default)s") 
-    train_parser.add_argument("-e", "--n-epoch", default=20, dest="n_epoch", help="The number of epoch will be run. Default: %(default)s") 
+    train_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
     train_parser.add_argument("-s", "--model-state-path", default="./torch_model.pth", dest="model_state_path", help="The path to which save the model state dict. Default: %(default)s") 
-    train_parser.add_argument("-x", "--cv-times", default=6, dest="cv_times", help="Times of cross-validation. Default: %(default)s") 
+    train_parser.add_argument("-e", "--n-epoch", default=50, type=int, dest="n_epoch", help="The number of epoch will be run. Default: %(default)s")
+    train_parser.add_argument("-x", "--cv-times", default=8, type=int, dest="cv_times", help="Times of cross-validation. Default: %(default)s")
 
     pred_parser = sub_parsers.add_parser("pred", help="Predict based on given net work state")
     pred_parser.add_argument("-p", "--file-pat", default="**/*.npz", dest="file_pat", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser Default: %(default)s")
-    pred_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", help="The Ensembl id of a gene for which train the model. Default: %(default)s") 
+    pred_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
     pred_parser.add_argument("-s", "--model-state", default="model_state.pth", dest="model_state", help="The model state to be loaded.  Default: %(default)s")
 
     return parser
@@ -106,59 +100,26 @@ def quant(args):
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
-
     afactory = ASEFactory(args)
-    afactory.init() \
-            .gen_gnm_itvl() \
-            .gen_seq_mtrx() \
-            .gen_ase_effect() \
-            .save_ase_report() \
-            .save_train_set() \
-            .shutdown()
+    afactory.init().gen_gnm_itvl().gen_seq_mtrx().gen_ase_effect().save_ase_report().save_train_set().shutdown()
 
 
 def merge(args):
     """Merge ASE quantification report and generate basic statistical analysis.
     """
+    try:
+        from ased.ASEReport import ASEReport
+    except ImportError as ime:
+        logger.error("Import error: {}".format(ime))
+        sys.exit()
+
     file_path_list = args.report_files
+    genome_annot = args.genome_annot
     save_prefix = args.save_prefix
-
-    chosen_cols = ["sample_id", "gene_id", "p_val"]
-    dtfm_list = [
-        pds.read_csv(file_path, sep="\t", usecols=chosen_cols)
-        for file_path in file_path_list]
-    if dtfm_list:
-        merged_dtfm = pds.concat(dtfm_list)
-    else:
-        logger.warn("The list of dataframes is empty, skipping ...")
-        return 0
-
-    # Reshape the datafram
-    merged_dtfm = merged_dtfm.pivot(index="gene_id", columns="sample_id")
-
-    # Remove genes with shared by less than xxx individuals
-    col_nona_count = merged_dtfm.notna().sum(axis=1)
-    merged_dtfm = merged_dtfm.loc[col_nona_count > 200, :].fillna(1)
-
-    # Adjust p-values for multiple test per gene
-    logger.debug("Head of merged_dtfm before FDR: {}".format(merged_dtfm.head(10)))
-    merged_dtfm = merged_dtfm.apply(lambda x: fdrcorrection(x)[-1], axis=0)
-    logger.debug("Head of merged_dtfm after FDR: {}".format(merged_dtfm.head(10)))
-
-    # Save p-values into file
-    matrix_file_path = save_prefix + ".tsv"
-    merged_dtfm.to_csv(matrix_file_path, sep="\t")
-
-    # Transform p-values by -log10()
-    merged_dtfm = merged_dtfm.apply(lambda x: [math.log10(e) * -1 if e > 1e-6 else 7 for e in x])
-
-    # Heatmap
-    heatmap_file_path = save_prefix + ".pdf"
-    fig_size = [x / 2 if x < 200 else 100 for x in merged_dtfm.shape]
-    fig_size[0], fig_size[1] = fig_size[1], fig_size[0]
-    grid = sbn.clustermap(merged_dtfm, figsize=fig_size, cmap="Greens",
-                          row_cluster=True, col_cluster=True)
-    grid.fig.savefig(heatmap_file_path)
+    ase_report = ASEReport(file_path_list, save_prefix, genome_annot=genome_annot)
+    ase_report.init() \
+            .report() \
+            .visualize()
 
 
 def train(args):
@@ -171,13 +132,15 @@ def train(args):
     file_pat = args.file_pat
     gene_id = args.gene_id
     n_epoch = args.n_epoch
+    cv_times = args.cv_times
     model_state_path = args.model_state_path
 
     net = CNNModel()
+    # logger.debug(summary(net, input_size=(1, 128, 128)))
     dfactory = DLPFactory(net, gene_id, file_pat)
     dfactory.init() \
             .load_dataset() \
-            .k_cv_split() \
+            .k_cv_split(cv_times) \
             .train(eps=n_epoch) \
             .save_model(model_state_path)
 
@@ -188,7 +151,6 @@ def pred(args):
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
-
     raise NotImplementedError("Not implemented yet!!!")
 
 

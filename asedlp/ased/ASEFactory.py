@@ -1,17 +1,28 @@
 """ASE factory."""
 
+import logging
 import math
 import os
 import sys
 
-import gffutils
 import numpy as np
+
+import gffutils
 import tables
 from scipy.optimize import minimize
-from scipy.stats import binom, chi2, betabinom
+from scipy.stats import betabinom, binom, chi2
 
-from .zutils import UserDict
-from .zutils import cmp
+from .zutils import UserDict, cmp
+
+logger = logging.getLogger("ASEFactory")
+logger.setLevel(logging.DEBUG)
+
+fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}",
+                        datefmt="%Y-%m-%d %H:%M:%S %p", style="{")
+cs_stream = logging.StreamHandler(sys.stderr)
+cs_stream.setFormatter(fmt)
+cs_stream.setLevel(logging.DEBUG)
+logger.addHandler(cs_stream)
 
 
 class ReadCountPool(UserDict):
@@ -31,8 +42,7 @@ class ReadCountPool(UserDict):
     def __getitem__(self, key, default=None):
         if key in self.data:
             return self.data[key]
-        else:
-            return default
+        return default
 
     def __len__(self):
         return len(self.data)
