@@ -1,4 +1,0 @@
-# Excluding the following files
-.env/
-**/__*__/
-**/*.pyc
