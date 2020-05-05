@@ -29,11 +29,24 @@ else
     module list
 fi
 
+if [ -d ../../.env ]; then
+    source ../../.env/bin/activate
+fi
+
 
 pjdir=~/Documents/projects/wp_ase_dlp
 opdir=${pjdir}/outputs/ase_genes/individual_vs_gene_matrix
+
+./asedlp merge \
+    -r $(find -L ${pjdir}/workdir/optdir/ -name "*_ase_report.txt") \
+    -p ${opdir}/ase_genes.p_val_heatmap \
+    -g ../../../inputs/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \
+    --max-na-per-gene 50
+
 for x in {1..22}; do
     ./asedlp merge \
         -r $(find -L ${pjdir}/workdir/optdir/ -name "*_${x}_ase_report.txt") \
-        -p ${opdir}/ase-genes_p-val-heatmap_chr${x}
+        -p ${opdir}/ase_genes.p_val_heatmap.chr${x} \
+        -g ../../../inputs/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \
+        --max-na-per-gene 50
 done

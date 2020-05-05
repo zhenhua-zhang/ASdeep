@@ -75,14 +75,17 @@ def get_args():
     merge_parser = sub_parsers.add_parser("merge", help="Merge allele specific expression quantification report by subcommand quant")
     merge_parser.add_argument("-r", "--report-files", required=True, dest="report_files", nargs="*", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser. Default: %(default)s")
     merge_parser.add_argument("-p", "--save-prefix", default="heatmap.pdf", dest="save_prefix", help="The file to which write the heatmap into. Default: %(default)s")
-    merge_parser.add_argument("--genome-annot", default="./genome.gff", dest="genome_annot", help="Path to GFF / GTF file to read gene structure information from. Default: %(default)s")
+    merge_parser.add_argument("-g", "--genome-annot", default="./genome.gff", dest="genome_annot", help="Path to GFF / GTF file to read gene structure information from. Default: %(default)s")
+    merge_parser.add_argument("--max-na-per-gene", default=50, dest="max_na_per_gene", type=int, help="The maximum number of NAs in row (gene id) in P-value matrix. Default: %(default)s")
 
     train_parser = sub_parsers.add_parser("train", help="Train the model on quantfified ASE effects.")
     train_parser.add_argument("-p", "--file-pat", required=True, dest="file_pat", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser. Default: %(default)s")
     train_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
-    train_parser.add_argument("-s", "--model-state-path", default="./torch_model.pth", dest="model_state_path", help="The path to which save the model state dict. Default: %(default)s") 
+    train_parser.add_argument("-s", "--model-state-path", default="./torch_model.pth", dest="model_state_path", help="The path to which save the model state dict. Default: %(default)s")
+    train_parser.add_argument("-l", "--loss-curve-path", default="./loss_curve", dest="loss_curve_path", help="The path into which save the training loss curve. Default: %(default)s")
     train_parser.add_argument("-e", "--n-epoch", default=50, type=int, dest="n_epoch", help="The number of epoch will be run. Default: %(default)s")
     train_parser.add_argument("-x", "--cv-times", default=8, type=int, dest="cv_times", help="Times of cross-validation. Default: %(default)s")
+    train_parser.add_argument("-P", "--pp-train", default=.7, type=float, dest="pp_train", help="The propotion of dataset will be used as training set. Default: %(default)s")
 
     pred_parser = sub_parsers.add_parser("pred", help="Predict based on given net work state")
     pred_parser.add_argument("-p", "--file-pat", default="**/*.npz", dest="file_pat", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser Default: %(default)s")
@@ -116,13 +119,17 @@ def merge(args):
     file_path_list = args.report_files
     genome_annot = args.genome_annot
     save_prefix = args.save_prefix
+    max_na_per_gene = args.max_na_per_gene
+
     ase_report = ASEReport(file_path_list, save_prefix, genome_annot=genome_annot)
-    ase_report.init() \
+    ase_report.init(max_na_per_gene=max_na_per_gene) \
             .report() \
             .visualize()
 
 
 def train(args):
+    """Train a CNN model.
+    """
     try:
         from ased.DLPFactory import DLPFactory, CNNModel
     except ImportError as ime:
@@ -133,15 +140,17 @@ def train(args):
     gene_id = args.gene_id
     n_epoch = args.n_epoch
     cv_times = args.cv_times
+    pp_train = args.pp_train
+    loss_curve_path = args.loss_curve_path
     model_state_path = args.model_state_path
 
     net = CNNModel()
-    # logger.debug(summary(net, input_size=(1, 128, 128)))
     dfactory = DLPFactory(net, gene_id, file_pat)
     dfactory.init() \
             .load_dataset() \
-            .k_cv_split(cv_times) \
+            .train_test_split(pp_train) \
             .train(eps=n_epoch) \
+            .loss_curve() \
             .save_model(model_state_path)
 
 

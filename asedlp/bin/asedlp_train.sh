@@ -90,6 +90,5 @@ model_state_path=${model_state_path:=${gene_id}.ptz}
 ./asedlp train \
     --file-pat "${file_pat}" \
     --gene-id "${gene_id}" \
-    --cv-times "${cv_times:=8}" \
-    --n-epoch "${n_epoch:=15}" \
+    --n-epoch "${n_epoch:=30}" \
     --model-state-path "${model_state_path}"
