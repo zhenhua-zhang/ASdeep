@@ -22,12 +22,13 @@ import math
 import sys
 import warnings
 
-import numpy as np
-import seaborn as sbn
 import matplotlib.pyplot as plt
-
+import numpy as np
 from statsmodels.sandbox.stats.multicomp import multipletests
-from sklearn.metrics.classification import accuracy_score, precision_score, recall_score
+
+import seaborn as sbn
+from sklearn.metrics.classification import (accuracy_score, precision_score,
+                                            recall_score)
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 warnings.filterwarnings("ignore")
@@ -335,6 +336,8 @@ class DLPFactory:
 
     def k_cv_split(self, n_splits=10):
         """Split the dataset into given number of splits for cross-validation.
+
+        TODO: 目标是用交叉验证，但实际效果是增加了n_splits倍的epoch。需要改进算法。
         """
         lables = list(self.dataset.get_labels())
         matrix = list(self.dataset.get_matrix())
@@ -405,17 +408,32 @@ class DLPFactory:
 
         return self
 
-    def loss_curve(self, loss_curve_path=None, svfmt=".png", **kwargs):
+    def loss_curve(self, loss_curve_path=None, svfmt="png", **kwargs):
         """Save the loss curve."""
         loss_list = self.loss_list
+        n_cv = len(loss_list)
 
-        fig, axes = plt.subplots(len(loss_list))
-        epoch_list = list(range(len(loss_list[0])))
+        fig, axes = plt.subplots(n_cv)
+        if n_cv == 1:
+            loss_axe_pair = [[loss_list[0], axes]]
+        elif n_cv > 1:
+            loss_axe_pair = zip(loss_list, axes)
+        else:
+            logger.error("The loss list is empty!!")
+            return self
 
-        for loss, ax in zip(loss_list, axes):
+        for loss, ax in loss_axe_pair:
+            epoch_list = list(range(len(loss)))
             sbn.lineplot(x=epoch_list, y=loss, ax=ax)
+            ax.set_title("Loss per epoch")
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Loss")
 
-        loss_curve_path = "{path}.{fmt}".format(path=loss_curve_path, fmt=svfmt)
+        if loss_curve_path.endswith("/"):
+            loss_curve_path = "{path}loss_curve.{fmt}".format(path=loss_curve_path, fmt=svfmt)
+        else:
+            loss_curve_path = "{path}.loss_curve.{fmt}".format(path=loss_curve_path, fmt=svfmt)
+
         fig.savefig(loss_curve_path, **kwargs)
 
         return self
