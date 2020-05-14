@@ -39,14 +39,14 @@ opdir=${pjdir}/outputs/ase_genes/individual_vs_gene_matrix
 
 ./asedlp merge \
     -r $(find -L ${pjdir}/workdir/optdir/ -name "*_ase_report.txt") \
-    -p ${opdir}/ase_genes.p_val_heatmap \
+    -p ${opdir}/ase_genes \
     -g ../../../inputs/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \
-    --max-na-per-gene 50
+    --max-na-per-gene 80
 
-for x in {1..22}; do
-    ./asedlp merge \
-        -r $(find -L ${pjdir}/workdir/optdir/ -name "*_${x}_ase_report.txt") \
-        -p ${opdir}/ase_genes.p_val_heatmap.chr${x} \
-        -g ../../../inputs/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \
-        --max-na-per-gene 50
-done
+#for x in {1..22}; do
+#    ./asedlp merge \
+#        -r $(find -L ${pjdir}/workdir/optdir/ -name "*_${x}_ase_report.txt") \
+#        -p ${opdir}/ase_genes.p_val_heatmap.chr${x} \
+#        -g ../../../inputs/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \
+#        --max-na-per-gene 50
+#done

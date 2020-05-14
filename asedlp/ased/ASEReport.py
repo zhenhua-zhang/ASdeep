@@ -14,7 +14,7 @@ from statsmodels.stats.multitest import fdrcorrection
 import gffutils as gut
 import seaborn as sbn
 
-logger = logging.getLogger("ASEFactory")
+logger = logging.getLogger("ASEReport")
 logger.setLevel(logging.DEBUG)
 
 fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}",
@@ -35,11 +35,18 @@ class ASEReport:
 
         self.merged_dtfm = None
         self.p_val_matrix = None
-        self.p_val_raw_matrix = None
+        self.p_val_matrix_raw = None
+        self.p_val_matrix_sorted_by_coord = None
 
         self.genome_annot = kwargs.get("genome_annot", None)
         self.ant_db_name = None
         self.ant_sql = None
+
+    @staticmethod
+    def _pr_close_fig():
+        plt.cla()
+        plt.clf()
+        plt.close("all")
 
     def _pr_join_dtfm(self, **kwargs):
         """Merge multiple data frame of ASE quantification report.
@@ -72,12 +79,17 @@ class ASEReport:
 
         return (a1_sum >= gross_count_per_allele and a2_sum >= gross_count_per_allele) or ((a1_sum + a2_sum) > gross_count)
 
+    def _pr_fetch_gene_coord(self, gene_id):
+        gene = self.ant_sql[gene_id]  # Feature attributes, accessed by gene.attributes["gene_name"]
+        return gene_id, gene.chrom, gene.start, gene.end
+
     def _pr_p_val_matrix(self, max_na_per_gene=100, adj_func=fdrcorrection):
         """Get P values."""
         if self.merged_dtfm is not None:
             p_val_raw_matrix = self.merged_dtfm \
                     .loc[:, ["gene_id", "sample_id", "p_val"]] \
                     .pivot(index="gene_id", columns="sample_id")
+
             # Remove genes without herterozygous locus in `max_na_per_gene` individuals at maximum
             col_nona_count = p_val_raw_matrix.notna().sum(axis=1)
             p_val_matrix = p_val_raw_matrix \
@@ -85,9 +97,18 @@ class ASEReport:
                     .fillna(1) \
                     .apply(lambda x: adj_func(x)[-1], axis=0)
 
-            return p_val_raw_matrix, p_val_matrix
+            gene_coord_list = [self._pr_fetch_gene_coord(gene_id) for gene_id in p_val_matrix.index]
+            gene_coord_list = sorted(gene_coord_list, key=lambda x: (int(x[1]), int(x[2])))
 
-        return None, None
+            gene_id_sorted_by_coord_list = [coord[0] for coord in gene_coord_list]
+            gene_chrom = [coord[1] for coord in gene_coord_list]
+
+            p_val_matrix_sorted_by_coord = p_val_matrix.loc[gene_id_sorted_by_coord_list, :]
+            p_val_matrix_sorted_by_coord["chrom"] = gene_chrom
+
+            return p_val_raw_matrix, p_val_matrix, p_val_matrix_sorted_by_coord
+
+        return None, None, None
 
     def _pr_draw_p_val_htmp(self):
         # Transform p-values by -log10()
@@ -96,7 +117,6 @@ class ASEReport:
         # Heatmap
         fig_size = [x / 2 if x < 200 else 100 for x in p_val_matrix.shape]
         fig_size[0], fig_size[1] = fig_size[1], fig_size[0]
-        logger.debug(p_val_matrix.shape)
         try:
             grid = sbn.clustermap(p_val_matrix, figsize=fig_size, cmap="Greens", row_cluster=True, col_cluster=True)
         except:
@@ -105,34 +125,42 @@ class ASEReport:
 
         return grid
 
-    def _pr_fetch_gene_coord(self, gene_id):
-        gene = self.ant_sql[gene_id]  # Feature attributes, accessed by gene.attributes["gene_name"]
-        return gene_id, gene.chrom, gene.start, gene.end
+    def _pr_draw_ase_gene_pp_across_genome(self):
+        mtrx = self.p_val_matrix_sorted_by_coord
 
-    def _pr_draw_p_val_mhtn(self):
-        gene_id_list = self.p_val_matrix.index
-        gene_coord_list = [self._pr_fetch_gene_coord(gene_id) for gene_id in gene_id_list]
+        chrom_width_list = mtrx["chrom"].value_counts()
+        chrom_width_list.index = [int(x) for x in chrom_width_list.index]
+        chrom_width_list= chrom_width_list.sort_index()
 
-        gene_coord_sorted_list = sorted(gene_coord_list, key=lambda x: (int(x[1]), int(x[2])))
-        gene_id_sorted_by_coord_list = [coord[0] for coord in gene_coord_sorted_list]
-        p_val_sorted_by_coord_matrix = self.p_val_matrix \
-                .loc[gene_id_sorted_by_coord_list, :] \
-                .apply(lambda x: [math.log10(e) * -1 if e > 1e-6 else 7 for e in x])
+        chrom_vspan = [
+            [0, xmax] if idx == 0 else [sum(chrom_width_list[:idx]), sum(chrom_width_list[:idx+1])]
+            for idx, xmax in enumerate(chrom_width_list)
+        ]
 
-        fig_size = [x / 2 if x < 200 else 100 for x in p_val_sorted_by_coord_matrix.shape]
-        fig_size[0], fig_size[1] = fig_size[1], fig_size[0]
+        chrom_xticks = [
+            xmax / 2 if idx == 0 else (sum(chrom_width_list[:idx]) + sum(chrom_width_list[:idx+1])) / 2
+            for idx, xmax in enumerate(chrom_width_list)
+        ]
 
-        axes = p_val_sorted_by_coord_matrix \
-                .plot(figsize=fig_size, legend=False, rot=45)
-        fig = axes.get_figure()
+        mtrx = mtrx.loc[:, [x for x in mtrx.columns if x not in [("chrom", "")]]]
+        ase_gene_pp = mtrx[mtrx<0.05].count(axis=1) / (mtrx.shape[1] - 1) * 100
+        fig, axes = plt.subplots()
+        axes.plot(ase_gene_pp.index, ase_gene_pp, linewidth=0.5)
+        
+        for idx, (xmin, xmax) in enumerate(chrom_vspan):
+            color = "g" if idx % 2 == 0 else "r"
+            axes.axvspan(xmin=xmin, xmax=xmax, ymin=0, facecolor=color, alpha=0.1)
+
+        axes.set_xticks(chrom_xticks)
+        axes.set_xticklabels(["chr{}".format(x) for x in chrom_width_list.index], rotation=45, rotation_mode="anchor", ha="right")
 
         return fig
 
     def _pr_desc_stat(self, adj_func=fdrcorrection):
         """Generate descriptive statistic for the merged ASE report.
         """
-        if self.p_val_raw_matrix is not None:
-            p_val_raw_matrix = self.p_val_raw_matrix \
+        if self.p_val_matrix_raw is not None:
+            p_val_raw_matrix = self.p_val_matrix_raw \
                     .fillna(1) \
                     .apply(lambda x: adj_func(x)[-1], axis=0)
 
@@ -146,6 +174,7 @@ class ASEReport:
     def init(self, **kwargs):
         """Initialize the instance.
         """
+        logger.info("Init")
         # Create a GFF/GTF database to fetch coordnation of given gene.
         ant_db_name = kwargs.get("ant_db_name", None)
         max_na_per_gene = kwargs.get("max_na_per_gene", 100)
@@ -158,13 +187,14 @@ class ASEReport:
 
         self.ant_sql = gut.FeatureDB(ant_db_name)
         self.merged_dtfm = self._pr_join_dtfm()
-        self.p_val_raw_matrix, self.p_val_matrix = self._pr_p_val_matrix(max_na_per_gene=max_na_per_gene)
+        self.p_val_matrix_raw, self.p_val_matrix, self.p_val_matrix_sorted_by_coord = self._pr_p_val_matrix(max_na_per_gene=max_na_per_gene)
 
         return self
 
     def report(self, report_fmt="csv"):
         """Generate files to show quantification results.
         """
+        logger.info("Report")
         save_prefix = self.save_prefix
         if self.p_val_matrix is not None:
             if report_fmt == "csv":
@@ -178,15 +208,20 @@ class ASEReport:
             p_value_matrix_output_name = ".".join([save_prefix, "p_value_matrix", report_fmt])
             self.p_val_matrix.to_csv(p_value_matrix_output_name, sep=sep)
 
+            p_val_matrix_sorted_by_coord_output_name = ".".join([save_prefix, "p_value_matrix_sorted_by_coord", report_fmt])
+            self.p_val_matrix_sorted_by_coord.to_csv(p_val_matrix_sorted_by_coord_output_name, sep=sep)
+
             p_value_raw_matrix_output_name = ".".join([save_prefix, "p_value_raw_matrix", report_fmt])
-            self.p_val_raw_matrix.to_csv(p_value_raw_matrix_output_name, sep=sep)
+            self.p_val_matrix_raw.to_csv(p_value_raw_matrix_output_name, sep=sep)
 
         return self
 
     def visualize(self, fig_fmt="pdf"):
         """Draw figures to show the result.
         """
+        logger.info("Visualize")
         save_prefix = self.save_prefix
+
         if self.p_val_matrix is not None:
             try:
                 htmp_output = ".".join([save_prefix, "heatmap", fig_fmt])
@@ -196,24 +231,30 @@ class ASEReport:
             except Exception as exp:
                 logger.error(exp)
 
-            mhtn_output = ".".join([save_prefix, "manhatten", fig_fmt])
-            fig = self._pr_draw_p_val_mhtn()
-            fig.savefig(mhtn_output)
+            fig = self._pr_draw_ase_gene_pp_across_genome()
+            fig.set_figheight(9)
+            fig.set_figwidth(16)
+            fig.savefig(".".join([save_prefix, "ase_gene_pp_across_genome", fig_fmt]))
+            plt.cla()
+            plt.clf()
             plt.close("all")
 
-        if self.p_val_raw_matrix is not None:
+        if self.p_val_matrix_raw is not None:
             ase_gene_per_individual, individual_per_ase_gene = self._pr_desc_stat()
 
-            ase_gene_per_individual_hist_fig = ".".join([save_prefix, "ase_gene_per_individual", fig_fmt])
             axes = ase_gene_per_individual.plot(kind="hist")
             fig = axes.get_figure()
-            fig.savefig(ase_gene_per_individual_hist_fig)
+            fig.savefig(".".join([save_prefix, "ase_gene_per_individual", fig_fmt]))
+            plt.cla()
+            plt.clf()
             plt.close("all")
 
             individual_per_ase_gene_hist_fit = ".".join([save_prefix, "individual_per_ase_gene", fig_fmt])
             axes = individual_per_ase_gene.plot(kind="hist")
             fig = axes.get_figure()
             fig.savefig(individual_per_ase_gene_hist_fit)
+            plt.cla()
+            plt.clf()
             plt.close("all")
 
         return self

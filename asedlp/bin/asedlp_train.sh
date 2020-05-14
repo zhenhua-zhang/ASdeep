@@ -1,23 +1,20 @@
 #!/bin/bash
 #SBATCH --mem=5G
-#SBATCH --time=0:59:0
+#SBATCH --time=1:29:0
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --partition=gpu
-#SBATCH --output=%j.%u.batch_asedlp_train.log
+#SBATCH --output=/home/p281736/Documents/projects/wp_ase_dlp/outputs/models/version_0.1.0/%j.%u.batch_asedlp_train.log
 #SBATCH --job-name=batch_asedlp_train
-#
+
 # File name : asedlp_train.sh
-# Author    : zhzhang
-# E-mail    : zhzhang2015@sina.com
+# Author    : Zhenhua Zhang
+# E-mail    : zhenhua.zhang217@gmail.com
 # Created   : Wed 01 Apr 2020 04:28:18 PM CEST
 # Version   : v0.0.1
 # License   : MIT
 
-# Run `asedlp train` which is a python script using job array by slurm.
-# Example:
-# pjdir=~/Documents/projects/ASEDLO
 
 set -o errexit
 set -o errtrace
@@ -83,12 +80,19 @@ else
     module list
 fi
 
-file_pat=${file_pat:='../../../workdir/optdir/**/aseOptdir/train_set/*_17_matrix_and_ase.npz'}
-gene_id=${gene_id:=ENSG00000108405}
-model_state_path=${model_state_path:=${gene_id}.ptz}
+model_state_dir=/home/p281736/Documents/projects/wp_ase_dlp/outputs/models/version_0.1.0
+
+file_pat='../../../workdir/optdir/**/aseOptdir/train_set/*_17_matrix_and_ase.npz'
+gene_id=ENSG00000108405
+
+file_pat='../../../workdir/optdir/**/aseOptdir/train_set/*_2_matrix_and_ase.npz'
+gene_id=ENSG00000173272
+model_state_path=${model_state_path:=${model_state_dir}/${gene_id}.model_state.ptz}
+loss_curve_path=${loss_curve_path:=${model_state_dir}/${gene_id}}
 
 ./asedlp train \
     --file-pat "${file_pat}" \
     --gene-id "${gene_id}" \
-    --n-epoch "${n_epoch:=30}" \
-    --model-state-path "${model_state_path}"
+    --n-epoch "${n_epoch:=400}" \
+    --model-state-path "${model_state_path}" \
+    --loss-curve-path "${loss_curve_path}"

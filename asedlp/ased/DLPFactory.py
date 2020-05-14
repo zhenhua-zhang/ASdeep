@@ -22,12 +22,13 @@ import math
 import sys
 import warnings
 
-import numpy as np
-import seaborn as sbn
 import matplotlib.pyplot as plt
-
+import numpy as np
 from statsmodels.sandbox.stats.multicomp import multipletests
-from sklearn.metrics.classification import accuracy_score, precision_score, recall_score
+
+import seaborn as sbn
+from sklearn.metrics.classification import (accuracy_score, precision_score,
+                                            recall_score)
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 warnings.filterwarnings("ignore")
@@ -49,8 +50,6 @@ try:
     import torch.nn.functional as func
 
     import torch.optim as optim
-
-    from torch.utils.data import random_split
     from torch.utils.data import Dataset, DataLoader, Subset
 except ImportError as ime:
     logger.error("{}".format(ime))
@@ -335,6 +334,8 @@ class DLPFactory:
 
     def k_cv_split(self, n_splits=10):
         """Split the dataset into given number of splits for cross-validation.
+
+        TODO: 目标是用交叉验证，但实际效果是增加了n_splits倍的epoch。需要改进算法。
         """
         lables = list(self.dataset.get_labels())
         matrix = list(self.dataset.get_matrix())
@@ -353,15 +354,24 @@ class DLPFactory:
 
         return self
 
-    def train(self, eps=20, criterion=None, optimizer=None, **kwargs):
-        """Train the model."""
+    def train(self, eps=20, criterion=None, optimizer=None, learning_rate=1e-5, **kwargs):
+        """Train the model.
+
+        Parameters
+        ----------
+        eps (int, optional, 20): Epoches.
+        criterion (object, optional, None): Method to calculate loss.
+        optimizer (object, optional, None): Method to optimize the model.
+        learning_rate (float, optional, 1e-5): Learning rate. Works only when `optimizer` is None.
+        **kwargs (Any, optinal): Other keyword arguments.
+        """
         if criterion is None:
             criterion = nn.CrossEntropyLoss()
 
         if optimizer is None:
-            optimizer = optim.Adam(self.net.parameters(), lr=0.000001)
+            optimizer = optim.Adam(self.net.parameters(), lr=learning_rate)
 
-        batch_size = kwargs.get('batch_size', 8)
+        batch_size = kwargs.get('batch_size', 32)
         shuffle = kwargs.get("shuffle", False)
         num_workers = kwargs.get("num_workers", 4)
         device = self._pr_check_device()
@@ -395,7 +405,7 @@ class DLPFactory:
                     running_loss += loss.item()
 
                 if epoch % 10 == 9:
-                    logger.info("Epoch: {}, loss: {}".format(epoch+1, running_loss / 10))
+                    logger.info("Epoch: {}, loss: {}".format(epoch+1, running_loss))
                 cv_loss_list.append(running_loss)
 
             loss_list.append(cv_loss_list)
@@ -405,17 +415,32 @@ class DLPFactory:
 
         return self
 
-    def loss_curve(self, loss_curve_path=None, svfmt=".png", **kwargs):
+    def loss_curve(self, loss_curve_path=None, svfmt="png", **kwargs):
         """Save the loss curve."""
         loss_list = self.loss_list
+        n_cv = len(loss_list)
 
-        fig, axes = plt.subplots(len(loss_list))
-        epoch_list = list(range(len(loss_list[0])))
+        fig, axes = plt.subplots(n_cv)
+        if n_cv == 1:
+            loss_axe_pair = [[loss_list[0], axes]]
+        elif n_cv > 1:
+            loss_axe_pair = zip(loss_list, axes)
+        else:
+            logger.error("The loss list is empty!!")
+            return self
 
-        for loss, ax in zip(loss_list, axes):
+        for loss, ax in loss_axe_pair:
+            epoch_list = list(range(len(loss)))
             sbn.lineplot(x=epoch_list, y=loss, ax=ax)
+            ax.set_title("Loss per epoch")
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Loss")
 
-        loss_curve_path = "{path}.{fmt}".format(path=loss_curve_path, fmt=svfmt)
+        if loss_curve_path.endswith("/"):
+            loss_curve_path = "{path}loss_curve.{fmt}".format(path=loss_curve_path, fmt=svfmt)
+        else:
+            loss_curve_path = "{path}.loss_curve.{fmt}".format(path=loss_curve_path, fmt=svfmt)
+
         fig.savefig(loss_curve_path, **kwargs)
 
         return self

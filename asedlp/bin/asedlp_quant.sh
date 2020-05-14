@@ -1,24 +1,16 @@
 #!/bin/bash
+#SBATCH --time=0:29:0 \
+#SBATCH --cpus=1 \
+#SBATCH --mem=5G \
+#SBATCH --array=1-22 \
+#SBATCH --job-name=asedlp_quant \
+#SBATCH --output=%A_%a-%u_asedlp_quant.log \
 
 # Author     : Zhenhua Zhang
 # Email      : zhenhua.zhang217@gmail.com
 # License    : MIT
 # Create date: Mon 09 Mar 2020 09:22:50 AM CET
 # Last update: Mon 30 Mar 2020 04:31:45 PM CEST
-
-# Run `asedlp quant` which is a python script using job array by slurm.
-# Example:
-
-[ 0 == 1 ] && echo <<EOF
-pjdir=~/Documents/projects/ASEDLP
-bash asedlp_quant.sh \
-    -w $pjdir/workdir \
-    -i AC47H5ACXX-3-18 \
-    -a $pjdir/inputs/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \
-    -s $pjdir/misc/freeze2_GoNL_related_GTE_30092016_QCpassed.csv \
-    -G $pjdir/inputs/Ensembl_references \
-    -v $pjdir/scripts/.env/bin/activate
-EOF
 
 set -o errexit
 set -o errtrace
@@ -42,7 +34,7 @@ echo_help() {
     cat <<EOF
 
 Usage:
-    sbatch [sbatch-specific-options] $(basename $0) [this-script-options]
+    sbatch [sbatch-specific-options] $(basename "$0") [this-script-options]
 
 Help:
     -w, --work-dir  Required.
@@ -76,7 +68,7 @@ EOF
 }
 
 long_opts="work-dir:,fastq-id:,gff-file:,sample-id-file:,gene-id-file-dir:,venv:,help"
-opt=$(getopt -l $long_opts -- "w:i:a:G:s:v:h" $@)
+opt=$(getopt -l $long_opts -- "w:i:a:G:s:v:h" "$@")
 eval set -- ${opt}
 while true; do
 	case $1 in
@@ -102,20 +94,20 @@ sample_id_file=${sample_id_file:?-s/--sample-id-file is required!!}
 gene_id_file_dir=${gene_id_file_dir:?-G/--gene-id-file-dir is required!!}
 
 # Ensure the job were executed under the job array mode of slurm>
-if [ $SLURM_ARRAY_TASK_ID"xxx" == "xxx" ]; then
+if [ "${SLURM_ARRAY_TASK_ID}xxx" == "xxx" ]; then
     echo "[E]: the script should be run under job array mode."
     exit 1
 fi
 
 chrom_id=${SLURM_ARRAY_TASK_ID:=1}
-sample_id=$(grep -w $fastq_id $sample_id_file | cut -f2)
+sample_id=$(grep -w "$fastq_id" "$sample_id_file" | cut -f2)
 
-if [ $venv_path"xxx" != "xxx" ]; then
-    source $venv_path
+if [ "${venv_path}xxx" != "xxx" ]; then
+    source "$venv_path"
 fi
 
 ase_opt_dir=$work_dir/optdir/$fastq_id/aseOptdir
-mkdir -p $ase_opt_dir/{ase_report,train_set}
+mkdir -p "$ase_opt_dir"/{ase_report,train_set}
 
 gene_id_file=$gene_id_file_dir/chr$chrom_id.txt
 haplotypes=$work_dir/snph5db/$chrom_id/haplotype.h5
@@ -128,15 +120,14 @@ ase_report=$ase_opt_dir/ase_report/${fastq_id}_${chrom_id}_ase_report.txt
 train_set=$ase_opt_dir/train_set/${fastq_id}_${chrom_id}_matrix_and_ase.npz
 
 ./asedlp quant \
-    --sample-id $sample_id \
-    --gene-id-file $gene_id_file \
-    --haplotypes $haplotypes \
-    --snp-tab $snp_tab \
-    --snp-index $snp_index \
-    --sequence-tab $sequence_tab \
-    --ref-read-counts $ref_read_counts \
-    --alt-read-counts $alt_read_counts \
-    --genome-annot $gff_file  \
-    --save-as-ase-report $ase_report \
-    --save-as-train-set $train_set
-
+    --sample-id "$sample_id" \
+    --gene-id-file "$gene_id_file" \
+    --haplotypes "$haplotypes" \
+    --snp-tab "$snp_tab" \
+    --snp-index "$snp_index" \
+    --sequence-tab "$sequence_tab" \
+    --ref-read-counts "$ref_read_counts" \
+    --alt-read-counts "$alt_read_counts" \
+    --genome-annot "$gff_file" \
+    --save-as-ase-report "$ase_report" \
+    --save-as-train-set "$train_set"
