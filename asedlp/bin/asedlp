@@ -157,7 +157,11 @@ def train(args):
     dfactory.init() \
             .load_dataset() \
             .train_test_split(pp_train) \
+<<<<<<< HEAD
             .train(eps=n_epoch, learning_rate=learning_rate) \
+=======
+            .train(eps=n_epoch) \
+>>>>>>> 04068db5052f521f2e3dcc0f039fbcef6348432d
             .loss_curve(loss_curve_path) \
             .save_model(model_state_path)
 
