@@ -43,7 +43,7 @@ only have at most 268 samples to be analyzed.** Questions could be that: is the 
 enough?
 
 4. Which reference genome was used in the GoNl project? By which aligner?
-Refrence genome: UCSC human reference genome build 37 (/home/cog/lfrancioli/resources/hg19/human_g1k_v37.fa). 
+Refrence genome: UCSC human reference genome build 37 (/home/cog/lfrancioli/resources/hg19/human_g1k_v37.fa).
 Aligner: BWA(0.5.9-r16)
 
 5. Which reference genome, gene annotation information, connonical indels, and snps will be used?
@@ -61,6 +61,7 @@ BIOS cohort.
 
 7. How to compile `snp2h5 / fasta2h5` on cluster?
 > Compile snp2h5 is only needed to be done if you plan use snp2h5 or fast2h5
+
 ```
 # 1. The following version of HDF5 functions in the compilation
 $> module load HDF5/1.8.14-foss-2015b
@@ -74,6 +75,7 @@ $> export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/apps/software/
 $> cd snp2h5
 $> make
 ```
+
 
 8. How to quantify allelic expression
 - ASElux
@@ -93,3 +95,7 @@ reasonable to remove the duplicates?
 
 # The following context in Chinese are just thinking line
 1. 有点高估了外显子上杂合位点的数目
+
+
+Working plan
+---

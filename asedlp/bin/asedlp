@@ -28,14 +28,10 @@ TDOO:
 
 import argparse
 import logging
-import math
 import os
 import sys
 
-import pandas as pds
-from statsmodels.stats.multitest import fdrcorrection
-
-import seaborn as sbn
+import numpy as np
 
 sys.path.append(os.path.split(sys.path[0])[0])
 
@@ -80,17 +76,20 @@ def get_args():
     merge_parser.add_argument("--max-na-per-gene", default=50, dest="max_na_per_gene", type=int, help="The maximum number of NAs in row (gene id) in P-value matrix. Default: %(default)s")
 
     train_parser = sub_parsers.add_parser("train", help="Train the model on quantfified ASE effects.")
-    train_parser.add_argument("-p", "--file-pat", required=True, dest="file_pat", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser. Default: %(default)s")
-    train_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
+    train_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
+    train_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar="GENE-ID", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
     train_parser.add_argument("-s", "--model-state-path", default="./torch_model.pth", dest="model_state_path", help="The path to which save the model state dict. Default: %(default)s")
-    train_parser.add_argument("-l", "--loss-curve-path", default="./loss_curve", dest="loss_curve_path", help="The path into which save the training loss curve. Default: %(default)s")
+    # train_parser.add_argument("-l", "--loss-curve-path", default="./loss_curve", dest="loss_curve_path", help="The path into which save the training loss curve. Default: %(default)s")
+    train_parser.add_argument("-L", "--logging-path", default="./logging_run", dest="logging_path", help="The path into which write the logging files for tensorboard")
+    train_parser.add_argument("--log-per-n-epoch", default=5, type=int, dest="log_per_n_epoch", help="Number of epoch for each evaluation point. Default: %(default)")
     train_parser.add_argument("-r", "--learning-rate", type=float, default=1e-5, dest="learning_rate", help="Learning rate.  Default: %(default)s")
     train_parser.add_argument("-e", "--n-epoch", default=50, type=int, dest="n_epoch", help="The number of epoch will be run. Default: %(default)s")
     train_parser.add_argument("-x", "--cv-times", default=8, type=int, dest="cv_times", help="Times of cross-validation. Default: %(default)s")
-    train_parser.add_argument("-P", "--pp-train", default=.7, type=float, dest="pp_train", help="The propotion of dataset will be used as training set. Default: %(default)s")
+    train_parser.add_argument("-R", "--random-state", default=31415, type=int, dest="random_state", help="The random seed for torch. Default: %(default)s")
+    train_parser.add_argument("--pp-train", default=.7, type=float, dest="pp_train", help="The propotion of dataset will be used as training set. Default: %(default)s")
 
     pred_parser = sub_parsers.add_parser("pred", help="Predict based on given net work state")
-    pred_parser.add_argument("-p", "--file-pat", default="**/*.npz", dest="file_pat", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser Default: %(default)s")
+    pred_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
     pred_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
     pred_parser.add_argument("-s", "--model-state", default="model_state.pth", dest="model_state", help="The model state to be loaded.  Default: %(default)s")
 
@@ -133,6 +132,7 @@ def train(args):
     """Train a CNN model.
     """
     try:
+        import torch
         import torch.nn as nn
         import torchvision.models as models
         from ased.DLPFactory import DLPFactory, CNNModel
@@ -140,25 +140,34 @@ def train(args):
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
 
-    file_pat = args.file_pat
+    file_path_pool = args.file_path_pool
     gene_id = args.gene_id
     n_epoch = args.n_epoch
     cv_times = args.cv_times
     pp_train = args.pp_train
+    random_state = args.random_state
+    logging_path = args.logging_path
     learning_rate = args.learning_rate
-    loss_curve_path = args.loss_curve_path
+    log_per_n_epoch = args.log_per_n_epoch
     model_state_path = args.model_state_path
 
+    np.random.seed(random_state)
+    torch.manual_seed(random_state)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
     net = models.resnext50_32x4d()
-    net.conv1 = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+    net.conv1 = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=(7, 7),
+                          stride=(2, 2), padding=(3, 3), bias=False)
     net.fc = nn.Linear(in_features=2048, out_features=3, bias=True)
 
-    dfactory = DLPFactory(net, gene_id, file_pat)
+    dfactory = DLPFactory(net, gene_id, file_path_pool,
+                          logging_path=logging_path,
+                          log_per_n_epoch=log_per_n_epoch)
     dfactory.init() \
             .load_dataset() \
             .train_test_split(pp_train) \
             .train(eps=n_epoch, learning_rate=learning_rate) \
-            .loss_curve(loss_curve_path) \
             .save_model(model_state_path)
 
 

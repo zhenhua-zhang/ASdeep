@@ -16,7 +16,6 @@ Example:
 ```
 """
 
-import glob
 import logging
 import math
 import sys
@@ -27,8 +26,7 @@ import numpy as np
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 import seaborn as sbn
-from sklearn.metrics.classification import (accuracy_score, precision_score,
-                                            recall_score)
+from sklearn.metrics.classification import accuracy_score, precision_score, recall_score
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 warnings.filterwarnings("ignore")
@@ -51,16 +49,17 @@ try:
 
     import torch.optim as optim
     from torch.utils.data import Dataset, DataLoader, Subset
+    from torch.utils.tensorboard import SummaryWriter
 except ImportError as ime:
     logger.error("{}".format(ime))
 
 
 class ASEDataset(Dataset):
-    def __init__(self, gene_id, file_pat, element_trans=None, dataset_trans=None):
+    def __init__(self, gene_id, file_path_pool, element_trans=None, dataset_trans=None):
         """
         Args:
             gene_id   (string): Gene ID (Ensembl gene ID) to train on.
-            file_pat  (string): Pattern to find the numpy file.
+            file_path_pool  (string): Pattern to find the numpy file.
             element_trans (callable, optional): Optional transfrom to be applied
             on a sample.
             dataset_trans (callable, optional): Optional transfrom to be applied
@@ -73,13 +72,11 @@ class ASEDataset(Dataset):
             operation will be done.
         """
         self.gene_id = gene_id
-        self.file_pat = file_pat
         self.element_trans = element_trans
         self.dataset_trans = dataset_trans
+        self.file_path_pool = file_path_pool
 
-        self.loss_list = None
 
-        self.file_path_pool = self._pr_load_file_path()
         self.dataset_pool = self._pr_load_data()
 
     def __len__(self):
@@ -92,9 +89,6 @@ class ASEDataset(Dataset):
             sample = self.element_trans(sample)
 
         return sample
-
-    def _pr_load_file_path(self):
-        return glob.glob(self.file_pat, recursive=True)
 
     def _pr_load_data(self):
         """Load dataset."""
@@ -267,20 +261,78 @@ class DLPFactory:
     """A class to train the neuroal network.
     """
 
-    def __init__(self, net, gene_id=None, file_pat=None, togpu=False):
-        self.net = net
-        self.togpu = togpu
-        self.gene_id = gene_id
-        self.file_pat = file_pat
-        self.dataset = None
-        self.cv_splits = None
-        self.tt_splits = None
+    def __init__(self, net, gene_id=None, file_path_pool=None, togpu=False,
+                 logging_path=None, log_per_n_epoch=5):
+        self.net = net                         # NN model will be used
+        self.togpu = togpu                     # whether ship data and model to GPU
+        self.gene_id = gene_id                 # The gene ID on which will train the model
+        self.logging_path = logging_path       # Path for the TensorBoard logs
+        self.file_path_pool = file_path_pool   # Files on which train and test
+        self.log_per_n_epoch = log_per_n_epoch # Logging point per N epoches
+
+        self.dataset = None    # DataSet() for the training
+        self.cv_splits = None  # cross validation splits
+        self.tt_splits = None  # train:test splits
+
+        self.train_loss_list = []  # Loss
+
+        self.writer = None # SummaryWriter for TensorBoard
 
     @staticmethod
     def _pr_check_device():
         return "cuda:0" if torch.cuda.is_available() else "cpu"
 
-    def _pr_test(self, model_state: str = None, testloader: DataLoader = None):
+    def _pr_train(self, eps, optimizer, device, criterion, splits, batch_size, shuffle, num_workers, log_per_n_epoch=5):
+        """The exact implementation of train.
+        """
+        for cv_idx, (train_idx, test_idx) in enumerate(splits):
+            trainloader = DataLoader(Subset(self.dataset, train_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+            testloader = DataLoader(Subset(self.dataset, test_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+
+            logger.info("Cross validation {}".format(cv_idx + 1))
+            cv_loss_list = []
+            for epoch in range(eps):
+                running_loss = 0.0
+                for _, data in enumerate(trainloader):
+                    optimizer.zero_grad()
+
+                    inputs, labels = data[0].to(device), data[1].to(device)
+                    outputs = self.net(inputs)
+                    train_loss = criterion(outputs, labels)
+                    train_loss.backward()
+                    optimizer.step()
+
+                    if epoch == 0 and cv_idx == 0:
+                        self.writer.add_graph(self.net, inputs)
+
+                    running_loss += train_loss.item()
+
+                if (epoch + 1) % log_per_n_epoch == 0 or epoch < 10:
+                    _, predicted = torch.max(outputs.data, 1)
+                    train_accu = accuracy_score(labels.to("cpu"), predicted.to("cpu")) * 100
+                    train_prec = precision_score(labels.to("cpu"), predicted.to("cpu"), average="macro") * 100
+                    train_rcll = recall_score(labels.to("cpu"), predicted.to("cpu"), average="macro") * 100
+                    logger.info("TRAIN: epoch {}, accuracy {:.3}%, precision {:.3}%, recall {:.3}%, loss {:.3}".format(epoch+1, train_accu, train_prec, train_rcll, running_loss))
+
+                    self.writer.add_scalar("Accuracy/Train", train_accu, epoch)
+                    self.writer.add_scalar("Precision/Train", train_prec, epoch)
+                    self.writer.add_scalar("Recall/Train", train_rcll, epoch)
+                    self.writer.add_scalar("Loss/Train", running_loss, epoch)
+
+                    test_accu, test_prec, test_rcll, test_loss = self._pr_test(self.net, testloader)
+                    logger.info("TEST: epoch {}, accuracy {:.3}%, precision {:.3}%, recall {:.3}%, loss {:.3}".format(epoch+1, test_accu, test_prec, test_rcll, test_loss))
+
+                    self.writer.add_scalar("Accuracy/Test", test_accu, epoch)
+                    self.writer.add_scalar("Precision/Test", test_prec, epoch)
+                    self.writer.add_scalar("Recall/Test", test_rcll, epoch)
+                    self.writer.add_scalar("Loss/Test", test_loss, epoch)
+
+                cv_loss_list.append(running_loss)
+
+        self.train_loss_list.append(cv_loss_list)
+
+    def _pr_test(self, model_state: str = None, testloader: DataLoader = None,
+                 criterion=None):
         if self.net is None:
             self.net = CNNModel()
             if model_state is not None:
@@ -291,44 +343,50 @@ class DLPFactory:
 
         if testloader is None:
             logger.error("Missing testloader!! Exit...")
-            return None
+            return None, None, None
+
+        if criterion is None:
+            criterion = nn.CrossEntropyLoss()
 
         true_list, pred_list = [], []
         device = self._pr_check_device()
         self.net.to(device)
+        test_loss = 0.0
         with torch.no_grad():
             for data in testloader:
-                matrix, labels = data[0].to(device), data[1].to(device)
-                outputs = self.net(matrix)
+                inputs, labels = data[0].to(device), data[1].to(device)
+                outputs = self.net(inputs)
                 _, predicted = torch.max(outputs.data, 1)
 
                 true_list.extend(labels.to("cpu"))
                 pred_list.extend(predicted.to("cpu"))
 
+                test_loss += criterion(outputs, labels).item()
+
         precision = precision_score(true_list, pred_list, average="macro") * 100
         recall = recall_score(true_list, pred_list, average="macro") * 100
         accuracy = accuracy_score(true_list, pred_list) * 100
 
-        logger.info("Precision: {:.3}%. Recall: {:.3}%. Accuracy: {:.3}%".format(precision, recall, accuracy))
+        # logger.info("Precision: {:.3}%. Recall: {:.3}%. Accuracy: {:.3}%. Test loss: {:.3}".format(precision, recall, accuracy, test_loss))
 
-        return None
+        return accuracy, precision, recall, test_loss
 
     def init(self):
         """Init."""
         # Check GPU or CPU
-        device = self._pr_check_device()
-        self.net.to(device)
+        self.writer = SummaryWriter(self.logging_path)
+        self.net.to(self._pr_check_device())
         return self
 
     def load_dataset(self, **kwargs):
         """Load the dataset for train or test.
         """
         gene_id = kwargs.get("gene_id", self.gene_id)
-        file_pat = kwargs.get("file_pat", self.file_pat)
+        file_path_pool = kwargs.get("file_path_pool", self.file_path_pool)
         element_trans = kwargs.get("element_trans", ReshapeMatrixAndPickupLabel())
         dataset_trans = kwargs.get("dataset_trans", MultipleTestAdjustMent())
 
-        self.dataset = ASEDataset(file_pat=file_pat, gene_id=gene_id, element_trans=element_trans, dataset_trans=dataset_trans)
+        self.dataset = ASEDataset(file_path_pool=file_path_pool, gene_id=gene_id, element_trans=element_trans, dataset_trans=dataset_trans)
 
         return self
 
@@ -379,52 +437,28 @@ class DLPFactory:
         if self.cv_splits is None and self.tt_splits is None:
             logger.error("No train and test splits were found.")
             return self
-        elif self.tt_splits is None:
+
+        if self.tt_splits is None:
             splits = self.cv_splits
         else:
             splits = [self.tt_splits]
 
-        loss_list = []
-        for cv_idx, (train_idx, test_idx) in enumerate(splits):
-            trainloader = DataLoader(Subset(self.dataset, train_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-            testloader = DataLoader(Subset(self.dataset, test_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-
-            logger.info("Cross validation {}".format(cv_idx))
-            cv_loss_list = []
-            for epoch in range(eps):
-                running_loss = 0.0
-                for _, data in enumerate(trainloader, 0):
-                    optimizer.zero_grad()
-
-                    inputs, labels = data[0].to(device), data[1].to(device)
-                    outputs = self.net(inputs)
-                    loss = criterion(outputs, labels)
-                    loss.backward()
-                    optimizer.step()
-
-                    running_loss += loss.item()
-
-                if epoch % 10 == 9:
-                    logger.info("Epoch: {}, loss: {}".format(epoch+1, running_loss))
-                cv_loss_list.append(running_loss)
-
-            loss_list.append(cv_loss_list)
-            self._pr_test(self.net, testloader)
-
-        self.loss_list = loss_list
+        log_per_n_epoch = self.log_per_n_epoch
+        self._pr_train(eps, optimizer, device, criterion, splits, batch_size,
+                       shuffle, num_workers, log_per_n_epoch=log_per_n_epoch)
 
         return self
 
     def loss_curve(self, loss_curve_path=None, svfmt="png", **kwargs):
         """Save the loss curve."""
-        loss_list = self.loss_list
-        n_cv = len(loss_list)
+        train_loss_list = self.train_loss_list
+        n_cv = len(train_loss_list)
 
         fig, axes = plt.subplots(n_cv)
         if n_cv == 1:
-            loss_axe_pair = [[loss_list[0], axes]]
+            loss_axe_pair = [[train_loss_list[0], axes]]
         elif n_cv > 1:
-            loss_axe_pair = zip(loss_list, axes)
+            loss_axe_pair = zip(train_loss_list, axes)
         else:
             logger.error("The loss list is empty!!")
             return self
