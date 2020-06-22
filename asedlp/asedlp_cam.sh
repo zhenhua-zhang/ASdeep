@@ -1,11 +1,12 @@
 #!/bin/bash
 #
-# File name : asedlp_train.sh
+# File name : asedlp_cam.sh
 # Author    : Zhenhua Zhang
 # E-mail    : zhenhua.zhang217@gmail.com
-# Created   : 2020 Apr 01
-# Version   : v0.2.0
+# Created   : Mon 22 Jun 2020 10:46:41 AM CEST
+# Version   : 800
 # License   : MIT
+#
 
 set -eu -o pipefail
 
@@ -16,11 +17,24 @@ spdir=${pjdir}/scripts
 
 model_state_dir=${opdir}/models/version_0.1.0
 
-file_pat=${pjdir}/'workdir/optdir/**/aseOptdir/train_set/*_17_matrix_and_ase.npz'
-gene_id=ENSG00000108405
-
+# file_pat=${pjdir}/'workdir/optdir/**/aseOptdir/train_set/*_1_matrix_and_ase.npz'
+# gene_id=ENSG00000163221
+#
 # file_pat=${pjdir}/'workdir/optdir/**/aseOptdir/train_set/*_2_matrix_and_ase.npz'
 # gene_id=ENSG00000173272
+#
+# file_pat=${pjdir}/'workdir/optdir/**/aseOptdir/train_set/*_15_matrix_and_ase.npz'
+# gene_id=ENSG00000116710
+#
+# file_pat=${pjdir}/'workdir/optdir/**/aseOptdir/train_set/*_16_matrix_and_ase.npz'
+# gene_id=ENSG00000206177
+
+file_pat=${pjdir}/'workdir/optdir/**/aseOptdir/train_set/*_17_matrix_and_ase.npz'
+gene_id=ENSG00000108405
+gene_id=ENSG00000269871
+gene_id=ENSG00000170315
+gene_id=ENSG00000161570
+# gene_id=ENSG00000185862
 
 output_dir=${model_state_dir}/${gene_id}
 mkdir -p "${output_dir}"
@@ -44,7 +58,7 @@ sbatch --time 0:29:0 <<EOF
 #SBATCH --job-name=${gene_id}.asedlp_train
 
 
-set -o errexit errtrace
+set -eu -o pipefail
 
 # Check host name
 case \$(hostname) in
@@ -80,3 +94,4 @@ ${spdir}/asedlp/bin/asedlp train \
 EOF
 
 # --loss-curve-path ${loss_curve_path} \
+

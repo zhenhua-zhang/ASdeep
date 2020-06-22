@@ -83,7 +83,7 @@ long_opts=$long_opts"fastah5db:,fasta2h5Exe:,"
 long_opts=$long_opts"waspPath:,virtualEnv:,sampleIdFile:,"
 long_opts=$long_opts"help,version"
 
-opt=$(getopt -l $long_opts -- "c:w:i:p:g:hV" $@)
+opt=$(getopt -l $long_opts -- "c:w:i:p:g:hV" "$@")
 eval set -- $opt
 while true; do
     case $1 in
@@ -311,7 +311,7 @@ WaspRMBRemapping=$(sbatch $dependency \
     --fq1Pattern */*fq1.gz \
     --fq2Pattern */*fq2.gz \
     | cut -d' ' -f4
-) 
+)
 INFO "WaspRMBRemapping was submitted: $WaspRMBRemapping ..."
 
 dependency=$afterok:$WaspRMBRemapping

@@ -180,7 +180,7 @@ fastq_input_dir=/groups/umcg-bios/tmp04/umcg-zzhang/projects/ASEDLP/inputs/BIOS_
 # cp -fr $prm_fastq_dir/BC43MJACXX-2-12_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43MJACXX-2-12_gonl-224a_config
 # cp -fr $prm_fastq_dir/BC43MJACXX-2-14_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43MJACXX-2-14_gonl-194a_config
 # cp -fr $prm_fastq_dir/BC43MJACXX-2-15_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43MJACXX-2-15_gonl-198b_config
-cp -fr $prm_fastq_dir/BC43MJACXX-2-19_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43MJACXX-2-19_gonl-12a_config
+# cp -fr $prm_fastq_dir/BC43MJACXX-2-19_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43MJACXX-2-19_gonl-12a_config
 # cp -fr $prm_fastq_dir/BC43MJACXX-2-21_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43MJACXX-2-21_gonl-133b_config
 # cp -fr $prm_fastq_dir/BC43MJACXX-3-22_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43MJACXX-3-22_gonl-166b_config
 # cp -fr $prm_fastq_dir/BC43N7ACXX-2-13_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43N7ACXX-2-13_gonl-130a_config
@@ -197,36 +197,36 @@ cp -fr $prm_fastq_dir/BC43MJACXX-2-19_R* $fastq_input_dir && ./SbatchWaspPipelin
 # cp -fr $prm_fastq_dir/BC43N7ACXX-6-27_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43N7ACXX-6-27_gonl-223a_config
 # cp -fr $prm_fastq_dir/BC43N7ACXX-6-7_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43N7ACXX-6-7_gonl-7a_config
 # cp -fr $prm_fastq_dir/BC43N7ACXX-7-13_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43N7ACXX-7-13_gonl-51b_config Fri 27 Mar 2020 09:01:37 AM CET
-cp -fr $prm_fastq_dir/BC43N7ACXX-7-9_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43N7ACXX-7-9_gonl-238a_config
-cp -fr $prm_fastq_dir/BC43N7ACXX-8-20_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43N7ACXX-8-20_gonl-23a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-1-12_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-12_gonl-48b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-1-14_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-14_gonl-127b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-1-15_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-15_gonl-48a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-1-16_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-16_gonl-127a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-1-18_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-18_gonl-171b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-1-19_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-19_gonl-171a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-1-9_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-9_gonl-32a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-2-1_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-1_gonl-230a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-2-20_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-20_gonl-32b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-2-22_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-22_gonl-144b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-2-27_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-27_gonl-230b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-2-4_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-4_gonl-69b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-3-18_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-18_gonl-146a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-3-19_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-19_gonl-63b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-3-20_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-20_gonl-135a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-3-21_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-21_gonl-63a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-3-22_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-22_gonl-135b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-3-25_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-25_gonl-233a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-4-10_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-10_gonl-237a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-4-1_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-1_gonl-36b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-4-2_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-2_gonl-145a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-4-3_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-3_gonl-36a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-4-4_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-4_gonl-145b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-4-5_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-5_gonl-123a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-4-6_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-6_gonl-123b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-4-8_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-8_gonl-237b_config
-cp -fr $prm_fastq_dir/BC48DMACXX-5-10_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-5-10_gonl-128a_config
-cp -fr $prm_fastq_dir/BC48DMACXX-5-11_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-5-11_gonl-152a_config
+# cp -fr $prm_fastq_dir/BC43N7ACXX-7-9_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43N7ACXX-7-9_gonl-238a_config
+# cp -fr $prm_fastq_dir/BC43N7ACXX-8-20_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC43N7ACXX-8-20_gonl-23a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-1-12_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-12_gonl-48b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-1-14_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-14_gonl-127b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-1-15_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-15_gonl-48a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-1-16_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-16_gonl-127a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-1-18_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-18_gonl-171b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-1-19_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-19_gonl-171a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-1-9_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-1-9_gonl-32a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-2-1_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-1_gonl-230a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-2-20_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-20_gonl-32b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-2-22_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-22_gonl-144b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-2-27_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-27_gonl-230b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-2-4_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-2-4_gonl-69b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-3-18_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-18_gonl-146a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-3-19_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-19_gonl-63b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-3-20_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-20_gonl-135a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-3-21_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-21_gonl-63a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-3-22_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-22_gonl-135b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-3-25_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-3-25_gonl-233a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-4-10_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-10_gonl-237a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-4-1_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-1_gonl-36b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-4-2_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-2_gonl-145a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-4-3_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-3_gonl-36a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-4-4_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-4_gonl-145b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-4-5_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-5_gonl-123a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-4-6_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-6_gonl-123b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-4-8_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-4-8_gonl-237b_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-5-10_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-5-10_gonl-128a_config
+# cp -fr $prm_fastq_dir/BC48DMACXX-5-11_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-5-11_gonl-152a_config
 # cp -fr $prm_fastq_dir/BC48DMACXX-5-12_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-5-12_gonl-228a_config
 # cp -fr $prm_fastq_dir/BC48DMACXX-5-14_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-5-14_gonl-228b_config
 # cp -fr $prm_fastq_dir/BC48DMACXX-5-15_R* $fastq_input_dir && ./SbatchWaspPipeline -c ../configs/BC48DMACXX-5-15_gonl-201a_config

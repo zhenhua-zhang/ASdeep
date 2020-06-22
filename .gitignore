@@ -10,3 +10,4 @@ rnaseqpl/configs/
 .env/
 .idea/
 *.pyc
+asedlp/examples

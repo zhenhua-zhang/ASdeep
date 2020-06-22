@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+#
+# File name : zutils.py
+# Author    : Zhenhua Zhang
+# E-mail    : zhenhua.zhang217@gmail.com
+# Created   : Mon 22 Jun 2020 11:25:03 AM CEST
+# Version   : v0.1.0
+# License   : MIT
+#
 
-import re
-import os
 import sys
-import glob
 import copy
-import math
-from os import path
+import logging
+
 from collections import UserDict
 
-import numpy as np 
+
+logger = logging.getLogger()
+fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}",
+                        datefmt="%Y-%m-%d %H:%M:%S %p", style="{")
+cs_handle = logging.StreamHandler()
+cs_handle.setLevel(logging.DEBUG)
+cs_handle.setFormatter(fmt)
+logger.addHandler(cs_handle)
+logger.setLevel(logging.DEBUG)
 
 
 def print_arguments(arguments, fwidth=None, to_head=("subcommand",)):
@@ -97,7 +110,9 @@ def insert_or_append(dict1, dictlike2):
     dict1 = copy.deepcopy(dict1)
 
     if not hasattr(dictlike2, "__getitem__") or not hasattr(dictlike2, "items"):
-        raise AttributeError("dictlike2 should at least has `__getitem__()`, aka `[]`, methods and itesm()")
+        raise AttributeError(
+            "dictlike2 should at least has "
+            "`__getitem__()`, aka `[]`, methods and itesm()")
 
     for key, val in dictlike2.items():
         if key in dict1:
@@ -135,4 +150,5 @@ def insert_or_append(dict1, dictlike2):
 #             .cache()
 # 
 #     return train_dtst, test_dtst
+
 
