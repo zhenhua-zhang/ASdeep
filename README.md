@@ -93,6 +93,14 @@ rmdup.py for paired-end or single-end reads. But for RNA-seq experiments, is it
 reasonable to remove the duplicates?
 
 
+11. Where the BIOS genotypes are?
+
+```
+# The raw genotypes in PLINK format were located at
+/groups/umcg-bios/prm02/projects/imputed/CODAM/genotypes/b37
+```
+
+
 # The following context in Chinese are just thinking line
 1. 有点高估了外显子上杂合位点的数目
 
