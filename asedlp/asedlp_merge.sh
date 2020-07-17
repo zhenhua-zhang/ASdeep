@@ -49,14 +49,14 @@ if [ -d ${spdir}/.env ]; then
 fi
 
 
-${spdir}/asedlp/bin/asedlp merge \
+${spdir}/asedlp/asedlp merge \
     -r \$(find -L ${pjdir}/workdir/optdir/ -name "*_ase_report.txt") \
     -p ${opdir}/ase_genes/individual_vs_gene_matrix/ase_genes \
     -g ${ipdir}/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \
     --max-na-per-gene 80
 
 for x in {1..22}; do
-    ${spdir}/asedlp/bin/asedlp merge \
+    ${spdir}/asedlp/asedlp merge \
         -r \$(find -L ${pjdir}/workdir/optdir/ -name "*_\${x}_ase_report.txt") \
         -p ${opdir}/ase_genes/individual_vs_gene_matrix/ase_genes.p_val_heatmap.chr\${x} \
         -g ${ipdir}/Ensembl_references/Homo_sapiens.GRCh37.75.gtf \

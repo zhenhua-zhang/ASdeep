@@ -18,7 +18,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader, Subset
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from .zutils import logger
+from zutils import logger
 
 
 class MultipleTestAdjustMent(object):
@@ -124,10 +124,10 @@ class ASEDataset(Dataset):
 
             matrix = dataset[0].astype(np.float32)
             length = matrix.shape[1]
-            max_sampl_num = int(math.sqrt(length / 2)) ** 2 * 2
-            if max_sampl_num != length:
+            max_sample_num = int(math.sqrt(length / 2)) ** 2 * 2
+            if max_sample_num != length:
                 logger.warn("Reshape the input data for the product of length * width has no integer square root solution")
-                matrix = matrix[:, :max_sampl_num, :]
+                matrix = matrix[:, :max_sample_num, :]
 
             label = dataset[1]
             sample = (matrix, label)
@@ -146,9 +146,12 @@ class ASEDataset(Dataset):
         else:
             yield self[idx][pos]
 
+    def into_helbert_curve(self):
+        """Convert the sequence into a Helbert curve"""
+        return self
+
     def get_labels(self, idx=None):
         return self._items(idx)
 
     def get_matrix(self, idx=None):
         return self._items(idx, False)
-

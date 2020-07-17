@@ -33,9 +33,8 @@ import sys
 
 import numpy as np
 
-sys.path.append(os.path.split(sys.path[0])[0])
-
-from ased.zutils import logger
+from zutils import logger
+# sys.path.append(os.path.split(sys.path[0])[0])
 
 
 def get_args():
@@ -81,14 +80,15 @@ def get_args():
     train_parser.add_argument("--log-per-n-epoch", default=5, type=int, dest="log_per_n_epoch", help="Number of epoch for each evaluation point. Default: %(default)s")
 
     cam_parser = sub_parsers.add_parser("cam", help="Show the Class Activation Map")
-    cam_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar="GENE-ID", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
-    cam_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
-    cam_parser.add_argument("-s", "--model-state", default="./test/model_state.pth", dest="model_state", metavar="MODEL-STATE", help="The model state to be loaded.  Default: %(default)s")
+    cam_parser.add_argument("-g", "--gene-id", required=True, dest="gene_id", metavar="GENE-ID", help="The Ensembl id of a gene for which train the model.")
+    cam_parser.add_argument("-p", "--file-path", required=True, dest="file_path", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
+    cam_parser.add_argument("-s", "--model-state", required=True, dest="model_state", metavar="MODEL-STATE", help="The model state to be loaded.")
+    cam_parser.add_argument("-o", "--save-path", default="output_pic", dest="save_path", metavar="CAM-SAVE-PATH", help="The path into which save the CAM. Default: %(default)s")
 
     pred_parser = sub_parsers.add_parser("pred", help="Predict based on given net work state")
     pred_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar="GENE-ID", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
     pred_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
-    pred_parser.add_argument("-s", "--model-state", default="./test/model_state.pth", dest="model_state", metavar="MODEL-STATE", help="The model state to be loaded.  Default: %(default)s")
+    pred_parser.add_argument("-s", "--model-state", default="./test/model_state.pth", dest="model_state", metavar="MODEL-STATE", help="The model state to be loaded. Default: %(default)s")
 
     return parser
 
@@ -97,7 +97,7 @@ def quant(args):
     """Qunatify the allele-specific expression effect for genes.
     """
     try:
-        from ased.ASEFactory import ASEFactory
+        from .ASEFactory import ASEFactory
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
@@ -115,7 +115,7 @@ def merge(args):
     """Merge ASE quantification report and generate basic statistical analysis.
     """
     try:
-        from ased.ASEReport import ASEReport
+        from .ASEReport import ASEReport
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit()
@@ -138,7 +138,7 @@ def train(args):
         import torch
         import torch.nn as nn
         import torchvision.models as models
-        from ased.DLPFactory import DLPFactory, CNNModel
+        from .DLPFactory import DLPFactory, CNNModel
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
@@ -161,16 +161,22 @@ def train(args):
 
     # It is feasible to use the CAM as there's AdaptiveAvgPool2d layer.
     net = models.resnext50_32x4d()
-    net.conv1 = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+    net.conv1 = nn.Conv2d(1, 64, (7, 7), (2, 2), (3, 3), bias=False)
     net.fc = nn.Linear(in_features=2048, out_features=3, bias=True)
 
-    dfactory = DLPFactory(net, gene_id, file_path_pool, logging_path=logging_path, log_per_n_epoch=log_per_n_epoch)
-    dfactory.init().load_dataset().train_test_split(pp_train).train(eps=n_epoch, learning_rate=learning_rate).save_model(model_state_path)
+    dfactory = DLPFactory(net, gene_id, file_path_pool,
+                          logging_path=logging_path,
+                          log_per_n_epoch=log_per_n_epoch)
+    dfactory.init() \
+            .load_dataset() \
+            .train_test_split(pp_train) \
+            .train(eps=n_epoch, learning_rate=learning_rate) \
+            .save_model(model_state_path)
 
 
 def pred(args):
     try:
-        from ased.DLPFactory import DLPFactory, CNNModel
+        from DLPFactory import DLPFactory, CNNModel
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
@@ -179,13 +185,21 @@ def pred(args):
 
 def cam(args):
     try:
-        from ased.CamFactory import CamFactory
+        from CamFactory import CamFactory
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
 
-    cfactory = CamFactory()
-    cfactory.init().show_cam()
+    gene_id = args.gene_id
+    file_path = args.file_path
+    model_state = args.model_state
+    save_path = args.save_path
+
+    cfactory = CamFactory(gene_id=gene_id, file_path=file_path)
+    cfactory.init(model_state=model_state) \
+            .load_dataset() \
+            .show_cam(save_path) \
+            .show_cam_dist_along_seq(save_path=save_path)
 
 
 def main():

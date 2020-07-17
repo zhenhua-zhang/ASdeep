@@ -30,30 +30,17 @@ model_state_dir=${opdir}/models/version_0.1.0
 # gene_id=ENSG00000206177
 
 file_pat=${pjdir}/'workdir/optdir/**/aseOptdir/train_set/*_17_matrix_and_ase.npz'
-gene_id=ENSG00000108405
-gene_id=ENSG00000269871
-gene_id=ENSG00000170315
-gene_id=ENSG00000161570
+# gene_id=ENSG00000108405
+# gene_id=ENSG00000269871
+# gene_id=ENSG00000170315
 # gene_id=ENSG00000185862
-
-output_dir=${model_state_dir}/${gene_id}
-mkdir -p "${output_dir}"
-
-n_epoch=50
-time_stamp=$(date +%Y%m%d_%H%M%S)
-model_state_path=${output_dir}/${time_stamp}.model_state.ptz
-logging_path=${output_dir}/${time_stamp}.tensorboard_log
-sbatch_log_path=${output_dir}/${time_stamp}.%j.%u.asedlp_train.log
-
-# loss_curve_path=${loss_curve_path:=${model_state_dir}/${gene_id}}
+gene_id=ENSG00000161570
 
 
-sbatch --time 0:29:0 <<EOF
+sbatch --time 0:19:0 <<EOF
 #!/bin/bash
 #SBATCH --mem=5G
-#SBATCH --gres=gpu:1
 #SBATCH --ntasks=1
-#SBATCH --partition=gpu
 #SBATCH --output=${sbatch_log_path}
 #SBATCH --job-name=${gene_id}.asedlp_train
 
@@ -83,15 +70,9 @@ case \$(hostname) in
 esac
 
 
-${spdir}/asedlp/bin/asedlp train \
-    --file-path ${file_pat} \
+${spdir}/asedlp/asedlp cam \
     --gene-id ${gene_id} \
-    --n-epoch ${n_epoch} \
-    --model-state-path ${model_state_path} \
-    --logging-path ${logging_path} \
-    --log-per-n-epoch 1
+    --model-state ${model_state_path} \
+    --file-path ${file_pat}
 
 EOF
-
-# --loss-curve-path ${loss_curve_path} \
-

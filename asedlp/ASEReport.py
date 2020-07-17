@@ -1,29 +1,20 @@
 """ASE report.
 """
 
-import logging
-import math
 import os
 import sys
+import math
+import logging
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sbn
+import gffutils as gut
+import matplotlib.pyplot as plt
+
 from statsmodels.stats.multitest import fdrcorrection
 
-import gffutils as gut
-import seaborn as sbn
-
-logger = logging.getLogger("ASEReport")
-logger.setLevel(logging.DEBUG)
-
-fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}",
-                        datefmt="%Y-%m-%d %H:%M:%S %p", style="{")
-cs_stream = logging.StreamHandler(sys.stderr)
-cs_stream.setFormatter(fmt)
-cs_stream.setLevel(logging.DEBUG)
-logger.addHandler(cs_stream)
-
+from zutils import logger
 
 class ASEReport:
     """A class to process ASE report.

@@ -15,15 +15,14 @@ import logging
 
 from collections import UserDict
 
-
 logger = logging.getLogger()
 fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}",
                         datefmt="%Y-%m-%d %H:%M:%S %p", style="{")
 cs_handle = logging.StreamHandler()
-cs_handle.setLevel(logging.DEBUG)
+cs_handle.setLevel(logging.INFO)
 cs_handle.setFormatter(fmt)
 logger.addHandler(cs_handle)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 def print_arguments(arguments, fwidth=None, to_head=("subcommand",)):
@@ -150,5 +149,18 @@ def insert_or_append(dict1, dictlike2):
 #             .cache()
 # 
 #     return train_dtst, test_dtst
+
+def make_gif(fp_in, fp_out, duration=400, loop=0):
+    import glob
+    from PIL import Image
+
+    try:
+        fp_in_imgs = glob.glob(fp_in)
+        img, *imgs = [Image.open(f) for f in sorted(fp_in_imgs)]
+        img.save(fp=fp_out, format="GIF", append_images=imgs, save_all=True,
+                 duration=duration, loop=loop)
+    except ValueError as err:
+        print(err)
+
 
 

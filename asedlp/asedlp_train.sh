@@ -82,7 +82,7 @@ case \$(hostname) in
 esac
 
 
-${spdir}/asedlp/bin/asedlp train \
+${spdir}/asedlp/asedlp train \
     --file-path ${file_pat} \
     --gene-id ${gene_id} \
     --n-epoch ${n_epoch} \

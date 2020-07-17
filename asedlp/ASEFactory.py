@@ -12,18 +12,7 @@ import tables
 from scipy.optimize import minimize
 from scipy.stats import betabinom, binom, chi2
 
-from .zutils import UserDict, cmp
-
-logger = logging.getLogger("ASEFactory")
-logger.setLevel(logging.DEBUG)
-
-fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}",
-                        datefmt="%Y-%m-%d %H:%M:%S %p", style="{")
-cs_stream = logging.StreamHandler(sys.stderr)
-cs_stream.setFormatter(fmt)
-cs_stream.setLevel(logging.DEBUG)
-logger.addHandler(cs_stream)
-
+from .zutils import UserDict, cmp, logger
 
 class ReadCountPool(UserDict):
     """A class for Read counts.
