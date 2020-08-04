@@ -1,14 +1,9 @@
-"""ASE factory version 0.2.0"""
+"""ASE factory."""
 
-import textwrap
 import logging
-import gzip
 import math
-import pdb
-import sys
 import os
-
-from collections import UserDict
+import sys
 
 import numpy as np
 
@@ -17,8 +12,7 @@ import tables
 from scipy.optimize import minimize
 from scipy.stats import betabinom, binom, chi2
 
-from zutils import cmp, logger
-from zutils import M2B
+from .zutils import UserDict, cmp, logger
 
 NNTVEC = [0, 0, 0, 0]  # Base not in ACGTN
 NT2VEC = {"A": [1, 0, 0, 0], "C": [0, 1, 0, 0], "G": [0, 0, 1, 0], "T": [0, 0, 0, 1]}
@@ -190,7 +184,7 @@ class ASEFactory:
         self.mrna_pool = {}
         self.exon_pool = {}
         self.ase_pool = None
-        self.ntseq_pool = None
+        self.ntmtrx_pool = None
 
     def _parse_gene_ids(self):
         self._gene_ids = self.args.gene_ids + self._parse_gene_id_file()
@@ -227,9 +221,20 @@ class ASEFactory:
             elif "seq" == node_name:
                 node_pool.append(self.seq_tab.get_node("/{}".format(chrom)))
             else:
-                logger.warn("Unsupported type of node: " + node_name)
+                print("Unsupported type of node: {}".format(node_name))
 
         return tuple(node_pool)
+
+    def _pr_nt2vc(self, code):
+        if isinstance(code, (np.int8, int)):
+            code = chr(code)
+        elif isinstance(code, bytes):
+            code = code.decode()
+        return NT2VEC.get(code, NNTVEC)
+
+    def _pr_encode_nt(self, a1_code, a2_code):
+        """Encode allele pairs into matrix"""
+        return self._pr_nt2vc(a1_code) + self._pr_nt2vc(a2_code)
 
     @staticmethod
     def _pr_try_open(file_path):
@@ -286,36 +291,31 @@ class ASEFactory:
         self.mrna_pool[gene_id] = mrna
         self.exon_pool[gene_id] = exon_pool
 
-    def _pr_encode_bnt(self, a1_code, a2_code):
-        return M2B.get((a1_code, a2_code), "N")
-
-    def _pr_gen_seq(self, seq_itvl=None, shift=5e2):
-        """"""
-        # pdb.set_trace()
+    def _pr_gen_seq_mtrx(self, seq_itvl=None, shift=5e2):
+        """Generate a chain of amb for a sequence.
+        """
         seq_code_pool, snp_indx_pool, snp_code_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._CHROM, ( "seq", "snp", "hap"))
         itvl_start, itvl_stop = int(seq_itvl.start - shift), seq_itvl.start
 
         sample_idx = self._pr_sample_id_to_idx(self._CHROM, self._SAMPLE_ID)
+        _ntmtrx_pool = [None, None]
         seq_code = seq_code_pool[itvl_start: itvl_stop]
         snp_code = snp_code_pool[itvl_start: itvl_stop]
-
-        ntstr = ""
+        ntmtrx = []
         for a1_code, a2_code in list(zip(seq_code, snp_code)):  # Scan the sequence one by one, could be too slow?
             if a2_code != -1 and hap_phase_pool[a2_code, sample_idx] == 1:  # Is phased
                 snp_info = snp_indx_pool[a2_code]
                 a1_idx, a2_idx = hap_code_pool[a2_code, sample_idx * 2: sample_idx * 2 + 2]
-                a1_code, a2_code = ord(snp_info[a1_idx + 2]), ord(snp_info[a2_idx + 2])
+                a1_code, a2_code = snp_info[a1_idx + 2], snp_info[a2_idx + 2]
             else:
                 a2_code = a1_code
+            ntmtrx.append(self._pr_encode_nt(a1_code, a2_code))
 
-            ntstr += self._pr_encode_bnt(a1_code, a2_code)
-
-        return ntstr
+        return np.array([ntmtrx])
 
     def _pr_gen_rcp(self, exon_pool):
         """Generate a ReadCountsPool.
         """
-        # pdb.set_trace()
         ref_rc_pool, alt_rc_pool, snp_code_pool, snp_indx_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._CHROM, ("rc", "snp", "hap"))
 
         sample_idx = self._pr_sample_id_to_idx(self._CHROM, self._SAMPLE_ID)
@@ -328,7 +328,7 @@ class ASEFactory:
             ref_rc = ref_rc_pool[exon_start: exon_stop]
             alt_rc = alt_rc_pool[exon_start: exon_stop]
 
-            has_het_loci = np.select(het_loci > -1, het_loci)
+            has_het_loci = np.select(het_loci > -1, het_loci)  # FIXME: could be problematic.
             has_ref_rc = np.select(ref_rc > 0, ref_rc)
             has_alt_rc = np.select(alt_rc > 0, alt_rc)
 
@@ -353,11 +353,10 @@ class ASEFactory:
 
         return rcp
 
-    def _pr_gen_ase(self, exon_pool=None, mthd="bn", meta_exon=False):
+    def _pr_gen_ase_effect(self, exon_pool=None, mthd="bn", meta_exon=False):
         """Generate allele-specific expression effects from read counts.
         """
         rcp = self._pr_gen_rcp(exon_pool)
-        # pdb.set_trace()
         if len(rcp):
             aefact = ASEeffectFactory(rcp)
             if mthd == "bb":
@@ -396,39 +395,40 @@ class ASEFactory:
 
         self.ant_sql = gffutils.FeatureDB(ant_db_name)
 
-        self._parse_gene_ids()
-
         return self
 
     def gen_gnm_itvl(self, **kwargs):
         """Generate genomic intervals from Ensembl gene IDs.
         """
+        self._parse_gene_ids()
         for _id in self._gene_ids:
             self._pr_gen_gnm_region(_id, **kwargs)
 
         return self
 
-    def gen_seq(self, shift_factor=1e3):
+    def gen_seq_mtrx(self, shift_factor=1e3):
         """Generage regulatory sequence matrix.
+
+        TODO:
+            1. Add the parameters into logging file
         """
         shift = 2 * math.ceil(math.sqrt(shift_factor)) ** 2
 
         if self.mrna_pool:  # Not empty
-            self.ntseq_pool = {
-                gene_id: self._pr_gen_seq(seq_itvl=mrna, shift=shift)
-                for gene_id, mrna in self.mrna_pool.items()}
+            self.ntmtrx_pool = {gene_id: self._pr_gen_seq_mtrx(seq_itvl=mrna, shift=shift) for gene_id, mrna in self.mrna_pool.items()}
         else:
-            logger.warn("The mrna_pool is empty, use gen_gnm_region() first.")
+            print("It looks the self.mrna_pool is empty, did you use gen_gnm_region() yet?", file=sys.stderr)
 
         return self
 
-    def gen_ase(self, mthd="bn", meta_exon=False):
+    def gen_ase_effect(self, mthd="bn", meta_exon=False):
         if self.exon_pool:  # Not empty
             self.ase_pool = {
-                gene_id: self._pr_gen_ase(exon_pool, mthd, meta_exon)
-                for gene_id, exon_pool in self.exon_pool.items()}
+                gene_id: self._pr_gen_ase_effect(exon_pool=exon_pool, mthd=mthd, meta_exon=meta_exon)
+                for gene_id, exon_pool in self.exon_pool.items()
+            }
         else:
-            logger.warn("The exon_pool is empty, use gen_gnm_region() first.")
+            print("It looks the self.exon_pool is empty, did you use gen_gnm_region() yet?", file=sys.stderr)
 
         return self
 
@@ -440,7 +440,7 @@ class ASEFactory:
         elif self.args.as_ase_report:
             opt_file = self.args.as_ase_report
         else:
-            opt_file = self._SAMPLE_ID + ".ase_report.txt"
+            opt_file = self._SAMPLE_ID + "_ase_report.txt"
 
         header = "\t".join(["sample_id", "gene_id", "llh_ratio", "p_val", "ase_direction", "snp_ids", "snp_info", "snp_phase", "allele_counts"])
         with open(opt_file, "wt") as rfh:
@@ -480,48 +480,24 @@ class ASEFactory:
 
         return self
 
-    def save_train_set(self, opt_file=None, save_fmt="fa.gz"):
-        """Save seqeunce and ASE effects into disk.
-
-        Args:
-            opt_file (str, optional, None): The output file.
-            save_fmt (str, optional, fa.gz): output format. ["fa", "fa.gz"]
-        
-        Returns:
-            self (:obj:`ASEFactory`): The object itself.
-
-        Raises:
-            ValueError: If save_fmt argument is not one of [fa, fa.gz]
-
-        """
+    def save_train_set(self, opt_file=None):
         if opt_file:
             opt_file = opt_file
         elif self.args.as_train_set:
             opt_file = self.args.as_train_set
         else:
-            opt_file = self._SAMPLE_ID + ".ntsq_and_ase." + save_fmt
+            opt_file = self._SAMPLE_ID + "_matrix_and_ase.npz"
 
-        _opt_str = ""
-        _sample_id = self._SAMPLE_ID
-        for _gene_id in self.ntseq_pool.keys():
-            _ntseq = self.ntseq_pool[_gene_id]
-            _ase = self.ase_pool[_gene_id]
+        output_dataset = {}
+        for (gene_id, ntmtrx), (_, ase) in zip(self.ntmtrx_pool.items(), self.ase_pool.items()):
+            if ase:
+                _ase_effect = np.array([ntmtrx, list(ase[0][1:])])
+            else:
+                _ase_effect = np.array([ntmtrx, [1, 0]])
 
-            _ase_effect = "{}|{}".format(*list(_ase[0][1:])) if _ase else "1|0"
-            _nt_seq_fold = "\n".join(textwrap.wrap(_ntseq))
+            output_dataset[gene_id] = _ase_effect
 
-            _opt_str += ">{}|{}|{}\n{}\n".format(_sample_id, _gene_id, _ase_effect, _nt_seq_fold)
-
-        if save_fmt == "fa":
-            _open = open
-        elif save_fmt == "fa.gz":
-            _open = gzip.open
-            _opt_str = _opt_str.encode()
-        else:
-            raise TypeError("Unknown type of output format: {}".format(save_fmt))
-
-        with _open(opt_file, "w") as _opfh:
-            _opfh.write(_opt_str)
+        np.savez(opt_file, **output_dataset, allow_pickle=True)
 
         return self
 

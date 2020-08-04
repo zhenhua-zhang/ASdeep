@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-#
+
 # File name : zutils.py
 # Author    : Zhenhua Zhang
 # E-mail    : zhenhua.zhang217@gmail.com
@@ -16,13 +16,40 @@ import logging
 from collections import UserDict
 
 logger = logging.getLogger()
-fmt = logging.Formatter("| {levelname: ^8} | {asctime} | {name}: {message}",
-                        datefmt="%Y-%m-%d %H:%M:%S %p", style="{")
+fmt_str = "| {levelname: ^8} | {asctime} | {name}: {message}"
+dt_str = "%Y-%m-%d %H:%M:%S %p"
+fmt = logging.Formatter(fmt_str, datefmt=dt_str, style="{")
 cs_handle = logging.StreamHandler()
 cs_handle.setLevel(logging.INFO)
 cs_handle.setFormatter(fmt)
 logger.addHandler(cs_handle)
 logger.setLevel(logging.INFO)
+
+
+# Reference: https://genomevolution.org/wiki/index.php/Ambiguous_nucleotide
+# M2B = { # monoallelic base-pair to biallelic base.
+#     "AA": "A", "AC": "M", "AG": "R", "AT": "W",
+#     "CA": "m", "CC": "C", "CG": "S", "CT": "Y",
+#     "GA": "r", "GC": "s", "GG": "G", "GT": "K",
+#     "TA": "w", "TC": "y", "TG": "k", "TT": "T",
+#     "NN": "N"
+# }
+
+M2B = { # monoallelic base-pair to biallelic base.
+    (65, 65): "A", (65, 67): "M", (65, 71): "R", (65, 84): "W",
+    (67, 65): "m", (67, 67): "C", (67, 71): "S", (67, 84): "Y",
+    (71, 65): "r", (71, 67): "s", (71, 71): "G", (71, 84): "K",
+    (84, 65): "w", (84, 67): "y", (84, 71): "k", (84, 84): "T",
+    (78, 78): "N",
+}
+
+B2M = { # Biallelic base to monoallelic base-pair
+    "A": "AA", "M": "AC", "R": "AG", "W": "AT",
+    "m": "CA", "C": "CC", "S": "CG", "Y": "CT",
+    "r": "GA", "s": "GC", "G": "GG", "K": "GT",
+    "w": "TA", "y": "TC", "k": "TG", "T": "TT",
+    "N": "NN"
+}
 
 
 def print_arguments(arguments, fwidth=None, to_head=("subcommand",)):
@@ -82,7 +109,6 @@ class SmartDict(UserDict):
 
     def copy(self):
         return self.data.copy()
-
 
 
 def cmp(a, b):

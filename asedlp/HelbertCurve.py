@@ -8,27 +8,13 @@ import itertools as it
 import numpy as np
 import matplotlib.pyplot as plt
 
-# A global logger.
-from zutils import logger
-
-# Reference: https://genomevolution.org/wiki/index.php/Ambiguous_nucleotide
-s2b = {
-    "AA": "A", "AC": "M", "AG": "R", "AT": "W",
-    "CA": "m", "CC": "C", "CG": "S", "CT": "Y",
-    "GA": "r", "GC": "s", "GG": "G", "GT": "K",
-    "TA": "w", "TC": "y", "TG": "k", "TT": "T",
-}
-
-b2s = {
-    "A": "AA", "M": "AC", "R": "AG", "W": "AT",
-    "m": "CA", "C": "CC", "S": "CG", "Y": "CT",
-    "r": "GA", "s": "GC", "G": "GG", "K": "GT",
-    "w": "TA", "y": "TC", "k": "TG", "T": "TT",
-}
+from zutils import logger,B2M
 
 
 class HelbertCurve:
     def __init__(self, seq, kmers=4, biallele=True, seqorder="sm"):
+        super(HelbertCurve, self).__init__()
+
         self.seq = seq              # Input sequence
         self.kmers = kmers          # K-mers
         self.biallele = biallele    # Biallelic or monoallelic seqeunce?
@@ -59,13 +45,14 @@ class HelbertCurve:
         self.y_pool = []
 
         self.kmers_idx_pool = []
-        self.onehot_enc_list = ["".join(x) for x in it.product("ACGT", repeat=kmers)]
+        self.onehot_enc_list = [
+            "".join(x) for x in it.product("ACGT", repeat=self.kmers)]
 
     def _bcode2mcode(self): # Convert biallelic seq into two monoallelic seq
         if isinstance(self.seq, (list, tuple)) and len(self.seq) == 2:
             return self.seq
         elif isinstance(self.seq, str):
-            biseq = "".join([b2s[base] for base in self.seq])
+            biseq = "".join([B2M[base] for base in self.seq])
             return biseq[0::2], biseq[1::2]
         else:
             raise TypeError("Unsupport seq format: {}".format(type(self.seq)))
@@ -199,11 +186,11 @@ class HelbertCurve:
                     text = "NULL"
                 ax.text(i, j, text, ha="center", va="center")
 
-        fig.set_figwidth(figsize)
+        fig.set_figwidth(figsize)   # Set size by k-mers
         fig.set_figheight(figsize)
 
         save_path = "{}helbert_curve.{}".format(output_prefix, fmt)
-        logger.info("Please check \"{}\" for the pic".format(save_path))
+        # logger.info("Please check \"{}\" for the pic".format(save_path))
         fig.savefig(save_path)
 
         return self
@@ -220,22 +207,3 @@ class HelbertCurve:
                 onehot_hcurve[int(j)][int(i)][base] = 1
 
         return onehot_hcurve
-
-
-def test():
-    seq = "ATCGMRSYKWmrsykwATCGMRSYKWmrsykw"
-    seq = "ATCGGCTATGACGTAAATCGGCTATGACGTAA"
-    seq = "ATCGWCTATGACGTAAATCGGCTATGACGTAA"
-    kmers = 4
-
-    ohhc = HelbertCurve(seq, kmers=kmers) \
-            .seq_to_hcurve() \
-            .hcurve_to_img(output_prefix="./test/", figsize=10) \
-            .get_onehot_hcurve()
-
-    _seq = "\n".join(wrap(seq, 80))
-    logger.info("Found {} {}-mers:\n{}.".format(np.sum(ohhc), kmers, _seq))
-
-
-if __name__ == "__main__":
-    test()

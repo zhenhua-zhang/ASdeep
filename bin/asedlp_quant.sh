@@ -16,14 +16,15 @@ set -o errexit
 set -o errtrace
 
 
-if [[ $(hostname) =~ "genetics" ]]; then
+host_name=$(hostname)
+if [[ ${host_name} =~ "genetics" ]]; then
     echo "On local machine genetics."
 else
     source /apps/modules/modules.bashrc
     module purge
-    if [[ $(hostname) =~ "pg-node" || $(hostname) =~ "pg-gpu" ]]; then
+    if [[ ${host_name} =~ "pg-node" || ${host_name} =~ "pg-gpu" ]]; then
         ml PyTorch/1.3.1-fosscuda-2019b-Python-3.7.4
-    elif [[ $(hostname) =~ "umcg-node" ]]; then
+    elif [[ ${host_name} =~ "umcg-node" || ${host_name} =~ "calculon" ]]; then
         module load Python/3.6.3-foss-2015b
     fi
     module list
@@ -89,15 +90,15 @@ done
 
 work_dir=${work_dir:?-w/--work-dir is required!!}
 fastq_id=${fastq_id:?-i/--fastq-id is required!!}
-gff_file=${gff_file:?-g/--gff-file is required!!}
+gff_file=${gff_file:?-a/--gff-file is required!!}
 sample_id_file=${sample_id_file:?-s/--sample-id-file is required!!}
 gene_id_file_dir=${gene_id_file_dir:?-G/--gene-id-file-dir is required!!}
 
-# Ensure the job were executed under the job array mode of slurm>
-if [ "${SLURM_ARRAY_TASK_ID}xxx" == "xxx" ]; then
-    echo "[E]: the script should be run under job array mode."
-    exit 1
-fi
+# # Ensure the job were executed under the job array mode of slurm
+# if [ "${SLURM_ARRAY_TASK_ID}xxx" == "xxx" ]; then
+#     echo "[E]: the script should be run under job array mode."
+#     exit 1
+# fi
 
 chrom_id=${SLURM_ARRAY_TASK_ID:=1}
 sample_id=$(grep -w "$fastq_id" "$sample_id_file" | cut -f2)
@@ -119,7 +120,7 @@ alt_read_counts=$work_dir/optdir/$fastq_id/waspOptdir/perChrom/$chrom_id/${fastq
 ase_report=$ase_opt_dir/ase_report/${fastq_id}_${chrom_id}_ase_report.txt
 train_set=$ase_opt_dir/train_set/${fastq_id}_${chrom_id}_matrix_and_ase.npz
 
-./asedlp quant \
+./asedlp/asedlp quant \
     --sample-id "$sample_id" \
     --gene-id-file "$gene_id_file" \
     --haplotypes "$haplotypes" \

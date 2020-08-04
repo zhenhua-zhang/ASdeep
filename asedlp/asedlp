@@ -30,6 +30,7 @@ import argparse
 import logging
 import os
 import sys
+import pdb
 
 import numpy as np
 
@@ -97,15 +98,15 @@ def quant(args):
     """Qunatify the allele-specific expression effect for genes.
     """
     try:
-        from .ASEFactory import ASEFactory
+        from ASEFactory import ASEFactory
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
     afactory = ASEFactory(args)
     afactory.init() \
             .gen_gnm_itvl() \
-            .gen_seq_mtrx() \
-            .gen_ase_effect() \
+            .gen_seq() \
+            .gen_ase() \
             .save_ase_report() \
             .save_train_set() \
             .shutdown()
@@ -115,7 +116,7 @@ def merge(args):
     """Merge ASE quantification report and generate basic statistical analysis.
     """
     try:
-        from .ASEReport import ASEReport
+        from ASEReport import ASEReport
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit()
@@ -138,7 +139,7 @@ def train(args):
         import torch
         import torch.nn as nn
         import torchvision.models as models
-        from .DLPFactory import DLPFactory, CNNModel
+        from DLPFactory import DLPFactory, CNNModel
     except ImportError as ime:
         logger.error("Import error: {}".format(ime))
         sys.exit(1)
@@ -205,6 +206,7 @@ def cam(args):
 def main():
     parser = get_args()
     args = parser.parse_args()
+    #pdb.set_trace()
     if args.subcmd == "quant":
         quant(args)
     elif args.subcmd == "merge":
@@ -217,7 +219,6 @@ def main():
         pred(args)
     else:
         parser.print_help()
-        raise Exception("Unknown subcommand")
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@
 # Created date: Sun 22 Mar 2020 11:18:52 AM CET
 # Last update : Sun 22 Mar 2020 11:19:12 AM CET
 
-"""Unit test for `ASEDataset` class in `ased.DLPFactoryV2` module"""
+"""Unit test for `ASEDataset` class in `asedlp.ASEDataset` module"""
 
 import sys
 import unittest
@@ -15,7 +15,9 @@ import unittest
 sys.path.append("..")
 
 try:
-    from ased.DLPFactory import ASEDataset, CNNModel, DLPFactory
+    from asedlp.ASEDataset import ASEDataset
+    from asedlp.DLPFactory import DLPFactory
+    from asedlp.DLPFactory import CNNModel
 except ImportError as ime:
     print("ImportError: {}".format(ime), file=sys.stderr)
 
