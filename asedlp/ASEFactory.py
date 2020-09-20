@@ -1,4 +1,10 @@
-"""ASE factory version 0.2.0"""
+"""ASE factory version 0.2.0
+
+TODO:
+    1. In output FASTA file, only gene id is used for index. However, there
+    could be duplicated records for one gene id. Therefore, mRNA id for the gene
+    id should be used instead of gene id only.
+"""
 
 import textwrap
 import logging

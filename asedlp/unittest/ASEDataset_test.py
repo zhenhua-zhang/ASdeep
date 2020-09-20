@@ -15,27 +15,30 @@ import unittest
 sys.path.append("..")
 
 try:
-    from asedlp.ASEDataset import ASEDataset
-    from asedlp.DLPFactory import DLPFactory
-    from asedlp.DLPFactory import CNNModel
+    from ASEDataset import ASEDataset, SeqToHelbertAndMakeLabel
 except ImportError as ime:
     print("ImportError: {}".format(ime), file=sys.stderr)
 
 
-class TestASEDLP(unittest.TestCase):
-    gene_id = "ENSG00000185220"
-    file_pat = "../examples/**/*_1_matrix_and_ase.npz"
+class TestASEDataset(unittest.TestCase):
+    gene_id = "ENSG00000188976"
+    file_pat = ["../examples/chr1.ntsq_and_ase.fa.gz"]
+
     def test_ASEDataset(self):
-        dataset = ASEDataset(self.gene_id, self.file_pat)
+        element_trans = SeqToHelbertAndMakeLabel(show_pic=True)
+        dataset = ASEDataset(self.gene_id, self.file_pat,
+                             element_trans=element_trans)
         self.assertEqual(len(dataset), len(dataset.file_path_pool))
         self.assertEqual(dataset.gene_id, self.gene_id)
+        self.assertEqual(dataset[0][1], 1)
 
-    def test_DLPFactory(self):
-        net = CNNModel()
-        factory = DLPFactory(net, self.gene_id, self.file_pat)
-        factory.init() \
-                .load_dataset(batch_size=3) \
-                .train()
+# class TestDLPFactory(unittest.TestCase):
+    # def test_DLPFactory(self):
+    #     net = CNNModel()
+    #     factory = DLPFactory(net, self.gene_id, self.file_pat)
+    #     factory.init() \
+    #             .load_dataset(batch_size=3) \
+    #             .train()
 
 
 if __name__ == "__main__":

@@ -196,8 +196,8 @@ class HelbertCurve:
         return self
 
     def get_onehot_hcurve(self):
-        matrix_depth = 4 ** self.kmers
-        matrix_length = 2 ** self.order
+        matrix_depth = int(4 ** self.kmers)
+        matrix_length = int(2 ** self.order)
 
         onehot_hcurve = np.array([0] * matrix_length ** 2 * matrix_depth) \
                 .reshape(matrix_length, matrix_length, matrix_depth)

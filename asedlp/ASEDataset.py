@@ -10,15 +10,18 @@
 #
 """A module to load and pre-process sequence matrix."""
 
+import gzip
 import math
 import logging
 
 import numpy as np
 
+from Bio import SeqIO
 from torch.utils.data import Dataset, DataLoader, Subset
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from zutils import logger
+from HelbertCurve import HelbertCurve
 
 
 class MultipleTestAdjustMent(object):
@@ -72,20 +75,46 @@ class ReshapeMatrixAndPickupLabel(object):
         return (matrix, label)
 
 
+class SeqToHelbertAndMakeLabel(object):
+    """Convert sequence into matrix of Helbert curve and fit label to training.
+    """
+
+    def __init__(self, pthd=0.05, show_pic=False):
+        self.pthd = pthd
+        self.show_pic = show_pic
+
+    def __call__(self, sample, **kwargs):
+        sequence, labels = sample
+
+        if labels[0] <= self.pthd:
+            label = labels[1] + 1
+        else:
+            label = 1
+
+        hc = HelbertCurve(sequence, **kwargs)
+        hc = hc.seq_to_hcurve()
+
+        if self.show_pic:
+            hc = hc.hcurve_to_img()
+
+        return hc.get_onehot_hcurve(), label
+
+
 class ASEDataset(Dataset):
-    def __init__(self, gene_id, file_path_pool, element_trans=None, dataset_trans=None):
+    def __init__(self, gene_id, file_path_pool, element_trans=None,
+                 dataset_trans=None):
         """
         Args:
             gene_id   (string): Gene ID (Ensembl gene ID) to train on.
             file_path_pool  (string): Pattern to find the numpy file.
             element_trans (callable, optional): Optional transfrom to be applied
-            on a sample.
-            dataset_trans (callable, optional): Optional transfrom to be applied
-            on the whole dataset.
+                on a sample.
+            dataset_trans (callable, optional): Optional transform to be applied
+                on the whole dataset.
 
         NOTE:
             1. In previous implementation, it's not handy to do multiple-test
-            adjustment as the sampel was loaded at getitem. Thus, in current
+            adjustment as the sample was loaded at __getitem__(). Thus, in current
             implementation, the data will be loaded into memory and then further
             operation will be done.
         """
@@ -100,41 +129,36 @@ class ASEDataset(Dataset):
         return len(self.file_path_pool)
 
     def __getitem__(self, idx):
-        sample = self.dataset_pool[idx]
-
-        if self.element_trans:
-            sample = self.element_trans(sample)
-
-        return sample
+        return self.element_trans(self.dataset_pool[idx]) \
+                if self.element_trans else self.dataset_pool[idx]
 
     def _load_data(self):
         """Load dataset."""
         temp_list = []
         for idx in range(len(self)):
-            gene_id = self.gene_id
-            if self.file_path_pool:
-                file_path = self.file_path_pool[idx]
+            file_path = self.file_path_pool[idx]
+
+            if file_path.endswith("gz"):
+                _open = gzip.open
+                _mode = "rt"
             else:
-                raise ValueError()
-            dataset = np.load(file_path, allow_pickle=True).get(self.gene_id)
+                _open = open
+                _mode = "r"
 
-            if dataset is None:
-                logger.error("[E]: Failed to find {} in file: {}".format(gene_id, file_path))
-                return None
+            with _open(file_path, mode=_mode) as ipfh:
+                record = SeqIO.to_dict(SeqIO.parse(ipfh, "fasta"),
+                                   key_function=lambda x: x.id.split("|")[1]) \
+                        .get(self.gene_id, None)
 
-            matrix = dataset[0].astype(np.float32)
-            length = matrix.shape[1]
-            max_sample_num = int(math.sqrt(length / 2)) ** 2 * 2
-            if max_sample_num != length:
-                logger.warn("Reshape the input data for the product of length * width has no integer square root solution")
-                matrix = matrix[:, :max_sample_num, :]
-
-            label = dataset[1]
-            sample = (matrix, label)
-            temp_list.append(sample)
+            if record is None:
+                logger.error("No '{}' in '{}'".format(self.gene_id, file_path))
+                temp_list.append([None, None])
+            else:
+                p_val, label = record.name.split("|")[2:4]
+                temp_list.append((str(record.seq), (float(p_val), int(label))))
 
         if self.dataset_trans:
-            temp_list = self.dataset_trans(temp_list)
+            return tuple(self.dataset_trans(temp_list))
 
         return tuple(temp_list)
 
@@ -145,10 +169,6 @@ class ASEDataset(Dataset):
                 yield self[idx][pos]
         else:
             yield self[idx][pos]
-
-    def into_helbert_curve(self):
-        """Convert the sequence into a Helbert curve"""
-        return self
 
     def get_labels(self, idx=None):
         return self._items(idx)

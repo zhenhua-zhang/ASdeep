@@ -191,7 +191,9 @@ class DLPFactory:
         element_trans = kwargs.get("element_trans", ReshapeMatrixAndPickupLabel())
         dataset_trans = kwargs.get("dataset_trans", MultipleTestAdjustMent())
 
-        self.dataset = ASEDataset(file_path_pool=file_path_pool, gene_id=gene_id, element_trans=element_trans, dataset_trans=dataset_trans)
+        self.dataset = ASEDataset(file_path_pool=file_path_pool,
+                                  gene_id=gene_id, element_trans=element_trans,
+                                  dataset_trans=dataset_trans)
 
         return self
 
@@ -220,13 +222,12 @@ class DLPFactory:
     def train(self, eps=20, criterion=None, optimizer=None, learning_rate=1e-5, **kwargs):
         """Train the model.
 
-        Parameters
-        ----------
-        eps (int, optional, 20): Epoches.
-        criterion (object, optional, None): Method to calculate loss.
-        optimizer (object, optional, None): Method to optimize the model.
-        learning_rate (float, optional, 1e-5): Learning rate. Works only when `optimizer` is None.
-        **kwargs (Any, optinal): Other keyword arguments.
+        Args:
+            eps (int, optional, 20): Epoches.
+            criterion (object, optional, None): Method to calculate loss.
+            optimizer (object, optional, None): Method to optimize the model.
+            learning_rate (float, optional, 1e-5): Learning rate. Works only when `optimizer` is None.
+            **kwargs (Any, optinal): Other keyword arguments.
         """
         if criterion is None:
             criterion = nn.CrossEntropyLoss()
@@ -309,3 +310,6 @@ class DLPFactory:
         logger.warnings("Note implemented yet!")
 
         return self
+
+if __name__ == "__main__":
+    logger.error("This file is meant to be imported.")

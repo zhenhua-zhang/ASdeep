@@ -35,9 +35,6 @@ class TestHelbertCurve(unittest.TestCase):
 
         self.assertEqual(np.sum(ohhc), 58)
 
-        _seq = "\n".join(wrap(seq, 80))
-        # logger.info("Found {} {}-mers:\n{}".format(np.sum(ohhc), self.kmers, _seq))
-
     def test_helbert_curve_htz_base(self):
         seq = "ATCGWCTATGACGTAAATCGGCTATGACGTAA"
         ohhc = HelbertCurve(seq, kmers=self.kmers) \
@@ -47,9 +44,6 @@ class TestHelbertCurve(unittest.TestCase):
 
         self.assertEqual(np.sum(ohhc), 58)
 
-        _seq = "\n".join(wrap(seq, 80))
-        # logger.info("Found {} {}-mers:\n{}".format(np.sum(ohhc), self.kmers, _seq))
-
     def test_helbert_curve_sym_base(self):
         seq = "ATCGGCTATGACGTAAATCGGCTATGACGTAA"
         ohhc = HelbertCurve(seq, kmers=self.kmers) \
@@ -58,9 +52,6 @@ class TestHelbertCurve(unittest.TestCase):
                 .get_onehot_hcurve()
 
         self.assertEqual(np.sum(ohhc), 58)
-
-        _seq = "\n".join(wrap(seq, 80))
-        # logger.info("Found {} {}-mers:\n{}".format(np.sum(ohhc), self.kmers, _seq))
 
 
 if __name__ == "__main__":
