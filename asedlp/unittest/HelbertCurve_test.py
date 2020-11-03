@@ -53,6 +53,15 @@ class TestHelbertCurve(unittest.TestCase):
 
         self.assertEqual(np.sum(ohhc), 58)
 
+    def test_helbert_curve(self):
+        seq = "ACGATGCTCAG"
+        ohhc = HelbertCurve(seq, kmers=self.kmers) \
+                .seq_to_hcurve() \
+                .hcurve_to_img(output_prefix="sixteen_base.", figsize=2.5) \
+                .get_onehot_hcurve()
+
+        #self.assertEqual(np.sum(ohhc), 58)
+
 
 if __name__ == "__main__":
     unittest.main()

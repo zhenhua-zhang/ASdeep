@@ -175,7 +175,7 @@ class HelbertCurve:
             ax.plot(self.x_pool, self.y_pool)
 
         if color:
-            ax.imshow(self.hcurve_matrix)
+            ax.imshow(self.hcurve_matrix, cmap='summer')
 
         if kmer_text:
             for i, j in zip(self.x_pool, self.y_pool):
@@ -188,6 +188,7 @@ class HelbertCurve:
 
         fig.set_figwidth(figsize)   # Set size by k-mers
         fig.set_figheight(figsize)
+        fig.set_tight_layout(True)
 
         save_path = "{}helbert_curve.{}".format(output_prefix, fmt)
         # logger.info("Please check \"{}\" for the pic".format(save_path))

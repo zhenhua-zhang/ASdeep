@@ -3,8 +3,8 @@
 # Author      : Zhenhua Zhang
 # Email       : zhenhua.zhang217@gmail.com
 # License     : MIT
-# Create date : 2020-03-07
-# Last update : 2020 Apr 18 14:46:58
+# Create date : 2020 Mar 07 10:04:54
+# Last update : 2020 Nov 03 10:04:47
 
 """Deep learning methods to predict allele-specific expression effects by
 integrating RNA-seq results and haplotypes.
@@ -26,11 +26,9 @@ Usage:
 TDOO:
 """
 
-import argparse
-import logging
-import os
-import sys
 import pdb
+import sys
+import argparse
 
 import numpy as np
 
@@ -39,8 +37,7 @@ from zutils import logger
 
 
 def get_args():
-    """Get CLI arguments.
-    """
+    '''Get CLI arguments.'''
     parser = argparse.ArgumentParser(description="A package working on allele-specific expression.")
     parser.add_argument("-l", "--log-file", action="store", dest="log_file", default=None, help="The file into which logging write.")
     parser.add_argument("-v", "--verbose-level", action="count", dest="verbose_level", default=0, help="Verbose level. A counting keyword argument.")
@@ -75,7 +72,7 @@ def get_args():
     train_parser.add_argument("-L", "--logging-path", default="./logging_run", dest="logging_path", help="The path into which write the logging files for tensorboard. Default: %(default)s")
     train_parser.add_argument("-r", "--learning-rate", type=float, default=1e-5, dest="learning_rate", help="Learning rate.  Default: %(default)s")
     train_parser.add_argument("-e", "--n-epoch", default=50, type=int, dest="n_epoch", help="The number of epoch will be run. Default: %(default)s")
-    train_parser.add_argument("-x", "--cv-times", default=8, type=int, dest="cv_times", help="Times of cross-validation. Default: %(default)s")
+    # train_parser.add_argument("-x", "--cv-times", default=8, type=int, dest="cv_times", help="Times of cross-validation. Default: %(default)s")
     train_parser.add_argument("-R", "--random-state", default=31415, type=int, dest="random_state", help="The random seed for torch. Default: %(default)s")
     train_parser.add_argument("--pp-train", default=.7, type=float, dest="pp_train", help="The propotion of dataset will be used as training set. Default: %(default)s")
     train_parser.add_argument("--log-per-n-epoch", default=5, type=int, dest="log_per_n_epoch", help="Number of epoch for each evaluation point. Default: %(default)s")
@@ -95,8 +92,7 @@ def get_args():
 
 
 def quant(args):
-    """Qunatify the allele-specific expression effect for genes.
-    """
+    '''Qunatify the allele-specific expression effect for genes.'''
     try:
         from ASEFactory import ASEFactory
     except ImportError as ime:
@@ -113,8 +109,7 @@ def quant(args):
 
 
 def merge(args):
-    """Merge ASE quantification report and generate basic statistical analysis.
-    """
+    '''Merge ASE quantification report and generate basic statistical analysis.'''
     try:
         from ASEReport import ASEReport
     except ImportError as ime:
@@ -133,8 +128,7 @@ def merge(args):
 
 
 def train(args):
-    """Train a CNN model.
-    """
+    '''Train a CNN model.'''
     try:
         import torch
         import torch.nn as nn
@@ -147,7 +141,7 @@ def train(args):
     file_path_pool = args.file_path_pool
     gene_id = args.gene_id
     n_epoch = args.n_epoch
-    cv_times = args.cv_times
+    # cv_times = args.cv_times
     pp_train = args.pp_train
     random_state = args.random_state
     logging_path = args.logging_path
@@ -176,6 +170,7 @@ def train(args):
 
 
 def pred(args):
+    '''Predict.'''
     try:
         from DLPFactory import DLPFactory, CNNModel
     except ImportError as ime:
@@ -185,6 +180,8 @@ def pred(args):
 
 
 def cam(args):
+    '''Calculate classification activation map.
+    '''
     try:
         from CamFactory import CamFactory
     except ImportError as ime:
@@ -204,6 +201,8 @@ def cam(args):
 
 
 def main():
+    '''Main function.
+    '''
     parser = get_args()
     args = parser.parse_args()
     #pdb.set_trace()
