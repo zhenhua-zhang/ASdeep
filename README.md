@@ -105,5 +105,21 @@ reasonable to remove the duplicates?
 1. 有点高估了外显子上杂合位点的数目
 
 
-Working plan
----
+
+## Overview of dataset
+
+There are four cohort with genotypes and RNA-seq results available. In total,
+3416 individuals consists of the whole BIOS dataset.
+
+| Cohort   | # of individuals | Path (boxy) |
+| :---:    | :---:            | :---:       |
+| CODAM    | 561              | /groups/umcg-bios/prm02/projects/imputed/CODAM/genotypes/rawdata|
+| NTR_AC   | 251              | /groups/umcg-bios/prm02/projects/imputed/NTR/genotypes/NTR_B37_AC_Epigen_CAUT/rawdata|
+| NTR_Aff6 | 1,644            | /groups/umcg-bios/prm02/projects/imputed/NTR/genotypes/NTR_B37_Aff6_Epigen/rawdata|
+| PAN      | 192              | /groups/umcg-bios/prm02/projects/imputed/PAN/genotypes/rawdata|
+| RS       | 768              | /groups/umcg-bios/prm02/projects/imputed/RS/genotypes/rawdata|
+
+The path to genotypes on boxy, typically in the `rawdata` directory:
+`/groups/umcg-bios/prm02/projects/imputed/`
+Note: not all genotypes of each cohort are in `bed/bim/fam` format, one needs to
+convert them.
