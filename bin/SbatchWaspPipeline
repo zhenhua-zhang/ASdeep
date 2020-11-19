@@ -40,6 +40,19 @@ ASEPL_VERSION="0.1.0"
 ASEPL_FILENAME=$(basename "$0")
 # } // ENVs
 
+
+ERRO() {
+    echo -e "[E]: $1" >&2 && exit -1
+}
+
+WARN() {
+    echo -e "[W]: $1" >&2
+}
+
+INFO() {
+    echo -e "[I]: $1"
+}
+
 echo_version() {
     cat << EOF
 
@@ -192,7 +205,7 @@ afterok="--dependency=afterok"  # NOTE: the colon after the afterok is maully ad
 stepName=FastpPreproc
 mem=5G
 cpus=5  # Current only for paired-end FASTQs. It can only use up to 16 CPUs.
-time=0:10:00
+time=0:29:00
 
 fastqFileR1=$fastqDir/$fastqPrefix$fastqId"_R1"$fastqSuffix
 fastqFileR2=$fastqDir/$fastqPrefix$fastqId"_R2"$fastqSuffix
@@ -285,7 +298,7 @@ fi
 stepName=STARMapping
 mem=50G  # For human genome, it requires at least 40G memory.
 cpus=15
-time=0:39:00
+time=0:59:00
 
 readFilesInR1=$fastpTmpDir/${fastqId}_R1_paired.fq.gz
 readFilesInR2=$fastpTmpDir/${fastqId}_R2_paired.fq.gz
@@ -332,7 +345,7 @@ else
 
     snpH5dbPath=$workDir/snpH5db
     WaspCreateSnpHdf5DatabaseJobId=$(sbatch --time=$time --cpus=$cpus --mem=$mem \
-        --array=1-2 \
+        --array=1-22 \
         --output=$workDir/logdir/%A_%a-$stepName.log \
         --job-name=$stepName \
         <<EOF | cut -f4 -d ' '
@@ -406,13 +419,13 @@ fi
 stepName=WaspRMBFindIntersectedSnps
 mem=8G
 cpus=1
-time=0:25:00
+time=0:29:00
 
 WaspRMBFindIntersectedSnpsJobId=$(sbatch $dependency \
     --time=$time --mem=$mem --cpus=$cpus \
-    --ntasks=1 --array=1-2 \
+    --ntasks=1 --array=1-22 \
     --output=$workDir/logdir/%A_%a-$fastqId-$stepName.log \
-    --job-name=$stepName \
+    --job-name=$fastqId-$stepName \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
 set -Eex -o pipefail
@@ -459,12 +472,12 @@ dependency=$afterok:$WaspRMBFindIntersectedSnpsJobId
 stepName=WaspRMBRemapping
 mem=60G
 cpus=15
-time=0:49:00
+time=0:59:00
 
 WaspRMBRemappingJobId=$(sbatch $dependency \
     --time=$time --mem=$mem --cpus=$cpus \
     --output=$workDir/logdir/%j-$fastqId-$stepName.log \
-    --job-name=$stepName \
+    --job-name=$fastqId-$stepName \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
 set -Eex -o pipefail
@@ -509,9 +522,9 @@ time=0:19:00
 
 waspDir=${waspDir:=~/tools/WASP}
 WaspRMBFilterAndRmDupJobId=$(sbatch $dependency \
-    --time=$time --mem=$mem --cpus=$cpus --ntasks=1 --array=1-2 \
+    --time=$time --mem=$mem --cpus=$cpus --ntasks=1 --array=1-22 \
     --output=$workDir/logdir/%A_%a-$fastqId-$stepName.log \
-    --job-name=$stepName \
+    --job-name=$fastqId-$stepName \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
 set -Eex -o pipefail
@@ -600,13 +613,13 @@ echo "$stepName was submitted: $WaspRMBFilterAndRmDupJobId ..."
 dependency=$afterok:$WaspRMBFilterAndRmDupJobId
 stepName=CollectOutputAndCleanup
 mem=20G
-cpus=1
-time=0:10:00
+cpus=5
+time=0:19:00
 
 CollectOutputAndCleanupJobId=$(sbatch $dependency \
     --time=$time --mem=$mem --cpus=$cpus --ntasks=1 \
     --output=$workDir/logdir/%j-$fastqId-$stepName.log \
-    --job-name=$stepName \
+    --job-name=$fastqId-$stepName \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
 set -Eex -o pipefail
@@ -615,11 +628,12 @@ set -Eex -o pipefail
 cp -fr $workDir/tmpDir/$fastqId/fastpTmpDir/*.{html,json} $workDir/optDir/$fastqId/fastpOptDir
 # cp -fr $workDir/tmpDir/$fastqId/starTmpDir/* $workDir/optDir/$fastqId/starOptDir
 
-# for chr in {1..22}; do
-for chr in {1..2}; do
-    mkdir -p $workDir/optDir/$fastqId/waspOptDir/perChrom/\$chr
-    cp -fr $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/\$chr/*.h5 \
-        $workDir/optDir/$fastqId/waspOptDir/perChrom/\$chr
+for chr in {1..22}; do
+    if [[ -d $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/\$chr ]]; then
+        mkdir -p $workDir/optDir/$fastqId/waspOptDir/perChrom/\$chr
+        cp -fr $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/\$chr/*.h5 \
+            $workDir/optDir/$fastqId/waspOptDir/perChrom/\$chr
+    fi
 done
 
 # cat $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/*/*.readCountsInText.txt \
@@ -637,8 +651,8 @@ samtools sort -@ $cpus \
 samtools index -@ $cpus \
     $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.sort.bam
 
-# rm -fr $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.bam
-# rm -fr $workDir/tmpDir/$fastqId
+rm -fr $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.bam
+rm -fr $workDir/tmpDir/$fastqId
 EOF
 )
 
