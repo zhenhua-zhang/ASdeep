@@ -1,4 +1,10 @@
-# Allele-Specific Expression Deep Learning Predictor
+# Allele-Specific Expression Deep Learning Predictor - asedlp
+
+# TODO
+- [x] Tensorboard to check the training
+- [x] Multiple classes ROC curve and precision-recall curve
+- [x] Check the feasibility of phasing BIOS genotypes, if possible, then I'll have more than 3K samples for training. It's possible to phase the BIOS data set.
+
 
 ## Mapping reads to reference genome
 - Quality control of raw reads was done using `fastp`
@@ -10,9 +16,9 @@
 
 ## Quantify ASE effects from RNA seq results
 
-## Train deep learning(DL) model using TensorFlow
+## Train deep learning model using PyTorch
 
-## Validate the DL model using GTEx
+## Validate the deep learning model using GTEx dataset
 
 ## Directory tree
 /home/umcg-zzhang/Documents/projects/ASECausalSNPPrioritization
@@ -26,6 +32,65 @@
 ├── misc        Any files not grouped into other directories.
 └── temps       Temporary files
 ```
+
+
+
+## Overview of dataset
+
+### On BIOS VMs
+
+
+### BIOS
+There are four cohort with genotypes and RNA-seq results available. In total,
+x,xxx individuals consists of the whole BIOS dataset.
+
+#### Path to genotypes (imputed by Michigan Imputation Server)
+In total, there are 3,768 genotypes available. For each cohort, there are
+1. CODAM, 561, `/groups/umcg-bios/prm02/projects/HRC_imputation/CODAM/results/unzipped`
+2. NTR_GoNL, 333, `/groups/umcg-bios/prm02/projects/HRC_imputation/NTR/GoNL/results/unzipped`
+3. NTR_Aff6, 1805, `/groups/umcg-bios/prm02/projects/HRC_imputation/NTR/Affy6/results/unzipped`
+4. PAN,192, `/groups/umcg-bios/prm02/projects/HRC_imputation/PAN/results/unzipped`
+5. RS, 877, `/groups/umcg-bios/prm02/projects/HRC_imputation/RS/results/unzipped`
+6. LLS_OminExpr, 236
+7. LLS_660Q, 377
+8. LL, 1134
+
+TODO: Don't know the exact imputation settings yet.
+
+
+#### Path to RNA-seq files
+1. `/groups/umcg-bios/prm02/rawdata/rnaseq`
+
+#### Genotypes id and RNA-seq id pairs
+1. The original dir: `/groups/umcg-bios/tmp03/projects/idmapping/bbmriSampleInfo`
+2. New dir (copied): `/groups/umcg-bios/tmp03/users/umcg-zzhang/projects/wp_ase_dlp/input/bbmriSampleInfos`
+
+#### After matching genotype ids to RNA-seq ids
+1. RS, 698
+2. CODAM, 180
+3. PAN, 167
+4. NTR_Aff6, 744
+5. NTR_GoNL, 393
+6. LLS_OminExpr, 236
+7. LLS_660Q, 377
+8. LL, 1134
+
+**Some issues:**  
+1. The wired thing: There are 1,805 RNAseq-genotype pairs in the id mapping file, however, only 744 genotype IDs could be found in it.
+2. The LL deep are note imputed by Michigan imputation server yet.
+
+
+### GTEx
+We requested GTEx dataset (including 979 participants) by Project dbGap Accession Number: phs000424.v8.p2.c1
+
+0. 
+
+1. **RNA-seq data**
+We downloaded BAM files for 922 whole blood samples (Whole Blood: Whole Blood) using Gen3-Client following the instruction at [GTEx v8 free egress instructions](https://anvilproject.org/learn/reference/gtex-v8-free-egress-instructions).
+We used the newest (9th Dec. 2020) Linux version of Gen3-Client downloaded from [GitHub](https://github.com/uc-cdis/cdis-data-client/releases/download/2020.12/dataclient_linux.zip)
+The dataset includes 618 males (median age xxx) and 304 females (median age xxx)
+
+2. VCF files?
 
 
 ## FAQ
@@ -76,7 +141,6 @@ $> cd snp2h5
 $> make
 ```
 
-
 8. How to quantify allelic expression
 - ASElux
     - No quality control
@@ -101,25 +165,103 @@ reasonable to remove the duplicates?
 ```
 
 
-# The following context in Chinese are just thinking line
-1. 有点高估了外显子上杂合位点的数目
+# The Outline of the paper
+
+## Prediction of allele-specific expression using RNA-seq results by deep learning
+
+## Abstract
+
+## Introduction
+
+## Methods (data analysis)
+
+### Phasing and haplotype
+#### How the input files look like
+The genotypes are hosted on BOXY cluster.  
+    - TriTyper: /groups/umcg-bios/prm02/projects/genotypes  # Imputed but not phased, these files are not convertable because of duplicated SNP ids
+    - Plink: /groups/umcg-bios/prm02/projects/imputed  # Including raw and imputed (unknown pipeline)  
+
+#### How to quality control
+    - `GenomicHarmonizer` to convert TriTyper format into vcf
+    - `shapeit4` phase the genome for each individual
+
+### ASE quantification
+#### Preprocessing and QC
+`fastp` preprocessing
+
+#### Reads mapping
+`STAR` two-pass mapping
+
+#### Remove reference bias
+`WASP` pipeline to remove reference bias
+
+#### Quantification of ASE
+In-house scripts to construct regulating matrix and to estimate ASE effects  
+    - Regulating sequence
+    - ASE effects
+
+Please note:
+    1. MHC (HLA) region should be excluded.
+    2. Current only SNPs should be included, because indels cause a different
+    length of two allele.
+
+### Deep learning model
+`PyTorch` to implement a `CNN` model, using pre-constructed ResNext
+architechture
 
 
+## Results
 
-## Overview of dataset
+### Basic statistics
+1. Merge P-values by beta-binomial test for each gene.
+2. Adjust P-values of multiple-test by FDR.
+3. Assign genes with FDR < 0.05 as ASE genes for the given individuals.
+4. Stacked bar plot to show the percentage of gene with ASE. Perhaps, multiple
+   plots with different FDR threshold are more expressive.
+5. A Manhattan plot to show P-values across the genome per chromosome.
+6. Gene enrichment in different gene sets. E.g. GO annotations, pathways.
 
-There are four cohort with genotypes and RNA-seq results available. In total,
-3416 individuals consists of the whole BIOS dataset.
+### Model training and evaluation
 
-| Cohort   | # of individuals | Path (boxy) |
-| :---:    | :---:            | :---:       |
-| CODAM    | 561              | /groups/umcg-bios/prm02/projects/imputed/CODAM/genotypes/rawdata|
-| NTR_AC   | 251              | /groups/umcg-bios/prm02/projects/imputed/NTR/genotypes/NTR_B37_AC_Epigen_CAUT/rawdata|
-| NTR_Aff6 | 1,644            | /groups/umcg-bios/prm02/projects/imputed/NTR/genotypes/NTR_B37_Aff6_Epigen/rawdata|
-| PAN      | 192              | /groups/umcg-bios/prm02/projects/imputed/PAN/genotypes/rawdata|
-| RS       | 768              | /groups/umcg-bios/prm02/projects/imputed/RS/genotypes/rawdata|
+#### Training
+1. CNN model (Adam + Cross-Entropy-Loss + Drop-out)
+2. Cross-validation (not yet), the drop-out is an more convenient way to
+   diminish over-fit
 
-The path to genotypes on boxy, typically in the `rawdata` directory:
-`/groups/umcg-bios/prm02/projects/imputed/`
-Note: not all genotypes of each cohort are in `bed/bim/fam` format, one needs to
-convert them.
+#### Evaluation
+1. Accuracy
+2. Precision
+3. Recall
+4. ROC-AUC curve
+
+#### Class activation map (CAM)
+A way to show important pixels which determine the class for a given input
+matrix. It combines the last features map in forward propagation and fully
+connected layers that includes classification information. The integration are
+represented by heatmap in which the color emphasizes the importance of pixels
+with respect to classification.
+
+### Expanding target cohort from GoNL (268) to BIOS (~3000)
+In the pilot study to predict ASE, the results demonstrated that features in
+upstream sequence of a gene are reliable predictors to discriminate ASE from
+non-ASE genes. However, there are risks that the CNN model could be over-fitted
+as the small sample size (i.e. 268 samples). To minimize the over-fitting
+issue, more samples will be exploited in the model.
+
+### Data
+
+We firstly work on chr 17 ase it represents a chromosome with a minimal number
+of parent-specific imprinted genes[^1].
+
+### GRCh37 reference
+
+### BIOS RNA-seq results
+
+### GoNl genotypes and BIOS genotypes
+
+### Pre-process
+
+#### Match RNA-seq ID to DNA array ID
+
+## Reference
+[^1]: The landscape of genomic imprinting across diverse adult human tissues.

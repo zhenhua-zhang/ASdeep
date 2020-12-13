@@ -626,7 +626,7 @@ set -Eex -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 
 cp -fr $workDir/tmpDir/$fastqId/fastpTmpDir/*.{html,json} $workDir/optDir/$fastqId/fastpOptDir
-# cp -fr $workDir/tmpDir/$fastqId/starTmpDir/* $workDir/optDir/$fastqId/starOptDir
+cp -fr $workDir/tmpDir/$fastqId/starTmpDir/*.bam $workDir/optDir/$fastqId/starOptDir
 
 for chr in {1..22}; do
     if [[ -d $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/\$chr ]]; then
