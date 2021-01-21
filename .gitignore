@@ -11,3 +11,4 @@ rnaseqpl/configs/
 .idea/
 *.pyc
 asedlp/examples
+configs/bios/
