@@ -1,8 +1,14 @@
 #!/bin/bash
 # ASE analysis pipeline by fastp, STAR, WASP, and SAMtools
 
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -E -o pipefail
+
+#
+## NOTE
+#
+# 1. For one sample with paired-end results about 2G in total, the intermediate
+# files could go up to 30G. Please make sure you have enough space on the devices.
 
 # Setup working directories for current project.
 cat >/dev/null << EOF
@@ -52,10 +58,10 @@ if [[ -x /usr/bin/tput ]] && tput setaf 1 &> /dev/null; then
     fmtRed=$(tput setaf 1)
     fmtBlue=$(tput setaf 4)
     fmtCyan=$(tput setaf 6)
-    fmtGrey=$(tput setaf 7)
+    fmtGrey=$(tput setaf 8)
     fmtBlack=$(tput setaf 0)
     fmtGreen=$(tput setaf 2)
-    fmtWhite=$(tput setaf 8)
+    fmtWhite=$(tput setaf 7)
     fmtYellow=$(tput setaf 3)
     fmtPurple=$(tput setaf 5)
 else
@@ -242,7 +248,7 @@ afterok="--dependency=afterok"  # NOTE: the colon after the afterok is maully ad
 stepName=FastpPreproc
 mem=5G
 cpus=5  # Current only for paired-end FASTQs. It can only use up to 16 CPUs.
-time=0:29:00
+time=0:19:00
 
 fastqFileR1=$fastqDir/$fastqPrefix$fastqId"_R1"$fastqSuffix
 fastqFileR2=$fastqDir/$fastqPrefix$fastqId"_R2"$fastqSuffix
@@ -335,7 +341,7 @@ fi
 stepName=STARMapping
 mem=50G  # For human genome, it requires at least 40G memory.
 cpus=15
-time=0:59:00
+time=0:25:00
 
 readFilesInR1=$fastpTmpDir/${fastqId}_R1_paired.fq.gz
 readFilesInR2=$fastpTmpDir/${fastqId}_R2_paired.fq.gz
@@ -378,7 +384,7 @@ if [ -d $snpH5dbPath ]; then
 else
     mem=5G
     cpus=1
-    time=0:59:00
+    time=0:19:00
 
     # snpH5dbPath=$workDir/snpH5db
     WaspCreateSnpHdf5DatabaseJobId=$(sbatch --time=$time --cpus-per-task=$cpus --mem=$mem \
@@ -419,7 +425,7 @@ if [ -d $fastaH5dbPath ]; then
 else
     mem=5G
     cpus=1
-    time=0:59:00
+    time=0:19:00
     fastaH5dbPath=$workDir/fastaH5db
 
     WaspCreateFastaHdf5DatabaseJobId=$(sbatch --time=$time --cpus-per-task=$cpus --mem=$mem \
@@ -456,7 +462,7 @@ fi
 stepName=WaspRMBFindIntersectedSnps
 mem=8G
 cpus=1
-time=0:29:00
+time=0:19:00
 
 WaspRMBFindIntersectedSnpsJobId=$(sbatch $dependency \
     --time=$time --mem=$mem --cpus-per-task=$cpus \
@@ -507,9 +513,9 @@ echoInfo "$stepName was submitted: $WaspRMBFindIntersectedSnpsJobId ..."
 #
 dependency=$afterok:$WaspRMBFindIntersectedSnpsJobId
 stepName=WaspRMBRemapping
-mem=60G
+mem=50G
 cpus=15
-time=0:59:00
+time=0:19:00
 
 WaspRMBRemappingJobId=$(sbatch $dependency \
     --time=$time --mem=$mem --cpus-per-task=$cpus \
@@ -555,7 +561,7 @@ dependency=$afterok:$WaspRMBRemappingJobId
 stepName=WaspRMBFilterAndRmDup
 mem=10G
 cpus=1
-time=0:29:00
+time=0:19:00
 
 waspDir=${waspDir:=~/tools/WASP}
 WaspRMBFilterAndRmDupJobId=$(sbatch $dependency \
@@ -651,7 +657,7 @@ dependency=$afterok:$WaspRMBFilterAndRmDupJobId
 stepName=CollectOutputAndCleanup
 mem=4G
 cpus=1
-time=0:10:00
+time=0:9:00
 
 CollectOutputAndCleanupJobId=$(sbatch $dependency \
     --time=$time --mem=$mem --cpus-per-task=$cpus --ntasks=1 \
@@ -663,7 +669,7 @@ set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 
 # Compress all logfiles as some of them are large.
-gzip $workDir/logDir/*
+gzip $workDir/logDir/*$fastqId-*.log
 
 # Copy fastp reports to output directory.
 cp -fr $workDir/tmpDir/$fastqId/fastpTmpDir/*.{html,json} $workDir/optDir/$fastqId/fastpOptDir
@@ -696,7 +702,8 @@ cat $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/*/*.readCountsInText.txt \
 # 
 # rm -fr $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.bam
 
-rm -fr $workDir/tmpDir/$fastqId*
+rm -fr $workDir/tmpDir/$fastqId
+rm -fr $workDir/tmpDir/$fastqId*.fq.gz
 EOF
 )
 
