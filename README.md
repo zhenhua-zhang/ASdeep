@@ -1,10 +1,8 @@
 # Allele-Specific Expression Deep Learning Predictor - asedlp
 
-# TODO
-- [x] Tensorboard to check the training
-- [x] Multiple classes ROC curve and precision-recall curve
-- [x] Check the feasibility of phasing BIOS genotypes, if possible, then I'll have more than 3K samples for training. It's possible to phase the BIOS data set.
+# Overview of the pipeline
 
+![Overview-of-the-asedlp-pipeline.png]()
 
 ## Mapping reads to reference genome
 - Quality control of raw reads was done using `fastp`
@@ -21,8 +19,8 @@
 ## Validate the deep learning model using GTEx dataset
 
 ## Directory tree
-/home/umcg-zzhang/Documents/projects/ASECausalSNPPrioritization
-``` {bash}
+Current dir: `~/Documents/projects/wp_ase_dlp`
+```
 .
 ├── README.md   This file itself
 ├── inputs      Any files not produced during current project.
@@ -34,53 +32,58 @@
 ```
 
 
+# Overview of dataset
 
-## Overview of dataset
+## On BIOS VMs
 
-### On BIOS VMs
-
-
-### BIOS
+## BIOS on UMCG clusters
 There are four cohort with genotypes and RNA-seq results available. In total,
 x,xxx individuals consists of the whole BIOS dataset.
 
-#### Path to genotypes (imputed by Michigan Imputation Server)
+### Path to genotypes (imputed by Michigan Imputation Server)
 In total, there are 3,768 genotypes available. For each cohort, there are
-1. CODAM, 561, `/groups/umcg-bios/prm02/projects/HRC_imputation/CODAM/results/unzipped`
-2. NTR_GoNL, 333, `/groups/umcg-bios/prm02/projects/HRC_imputation/NTR/GoNL/results/unzipped`
-3. NTR_Aff6, 1805, `/groups/umcg-bios/prm02/projects/HRC_imputation/NTR/Affy6/results/unzipped`
-4. PAN,192, `/groups/umcg-bios/prm02/projects/HRC_imputation/PAN/results/unzipped`
-5. RS, 877, `/groups/umcg-bios/prm02/projects/HRC_imputation/RS/results/unzipped`
-6. LLS_OminExpr, 236
-7. LLS_660Q, 377
-8. LL, 1134
+| Cohort       | Samples | Path (Calculon) |
+| :----------: | :-----: | :---:           |
+| CODAM        | 561     | /groups/umcg-bios/prm02/projects/HRC_imputation/CODAM/results/unzipped
+| NTR_GoNL     | 333     | /groups/umcg-bios/prm02/projects/HRC_imputation/NTR/GoNL/results/unzipped
+| NTR_Aff6     | 1805    | /groups/umcg-bios/prm02/projects/HRC_imputation/NTR/Affy6/results/unzipped
+| PAN          | 192     | /groups/umcg-bios/prm02/projects/HRC_imputation/PAN/results/unzipped
+| RS           | 877     | /groups/umcg-bios/prm02/projects/HRC_imputation/RS/results/unzipped
+| LLS_OminExpr | 236     |
+| LLS_660Q     | 377     |
+| LL           | 1134    |
 
-TODO: Don't know the exact imputation settings yet.
+**TODO**: Don't know the exact imputation settings yet.
 
+### Path to RNA-seq files (Calculon / Gearshift?)
+The RNA-seq FASTQ files could be found: `/groups/umcg-bios/prm02/rawdata/rnaseq`
 
-#### Path to RNA-seq files
-1. `/groups/umcg-bios/prm02/rawdata/rnaseq`
-
-#### Genotypes id and RNA-seq id pairs
-1. The original dir: `/groups/umcg-bios/tmp03/projects/idmapping/bbmriSampleInfo`
-2. New dir (copied): `/groups/umcg-bios/tmp03/users/umcg-zzhang/projects/wp_ase_dlp/input/bbmriSampleInfos`
-
-#### After matching genotype ids to RNA-seq ids
-1. RS, 698
-2. CODAM, 180
-3. PAN, 167
-4. NTR_Aff6, 744
-5. NTR_GoNL, 393
-6. LLS_OminExpr, 236
-7. LLS_660Q, 377
-8. LL, 1134
+### After matching genotype ids to RNA-seq ids
+More info at: `~/Documents/projects/wp_ase_dlp/inputs/idmapping`
+| Cohort_id    | Successful_count  | Schedualed_count  | Pass  |
+| :----------: | :---------------: | :---------------: | :---: |
+| CODAM        | 180               | 180               | Yes   |
+| LLS_660Q     | 372               | 372               | Yes   |
+| LLS_OminExpr | 236               | 236               | Yes   |
+| NTR_Affy6    | 744               | 744               | Yes   |
+| PAN          | 167               | 167               | Yes   |
+| RS           | 698               | 698               | Yes   |
+| gonl         | 273               | 273               | Yes   |
+| LL           | 0                 | 407               | No    |
+| Total        | 2670              | 3077              | No    |
 
 **Some issues:**  
-1. The wired thing: There are 1,805 RNAseq-genotype pairs in the id mapping file, however, only 744 genotype IDs could be found in it.
-2. The LL deep are note imputed by Michigan imputation server yet.
+1. The LL deep are note imputed by Michigan imputation server yet.
 
 
-### GTEx
+## Geuvadis
+
+### RNA-seq FASTQ files
+
+### HD genotype chip data
+
+
+## GTEx
 We requested GTEx dataset (including 979 participants) by Project dbGap Accession Number: phs000424.v8.p2.c1
 
 0. 
@@ -163,6 +166,7 @@ reasonable to remove the duplicates?
 # The raw genotypes in PLINK format were located at
 /groups/umcg-bios/prm02/projects/imputed/CODAM/genotypes/b37
 ```
+
 
 
 # The Outline of the paper
@@ -265,3 +269,5 @@ of parent-specific imprinted genes[^1].
 
 ## Reference
 [^1]: The landscape of genomic imprinting across diverse adult human tissues.
+
+<!-- vim: set nospell: -->
