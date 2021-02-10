@@ -88,18 +88,18 @@ class ASEeffectFactory:
         2. Which transcript to be considered.
     """
 
-    def __init__(self, rc):
-        self.rc = self._pr_parse_rc(rc)
+    def __init__(self, read_counts):
+        self.read_counts = self._pr_parse_rc(read_counts)
         self.optim_results = {}
 
     @staticmethod
-    def _pr_parse_rc(rc):
-        if isinstance(rc, (tuple, list)) and len(rc) >= 2:
-            return rc, []
-        elif isinstance(rc, ReadCountPool):
-            return rc.unpack()
+    def _pr_parse_rc(read_counts):
+        if isinstance(read_counts, (tuple, list)) and len(read_counts) >= 2:
+            return read_counts, []
+        elif isinstance(read_counts, ReadCountPool):
+            return read_counts.unpack()
         else:
-            raise TypeError("rc parameter should be tuple, list, or ReadCountPool")
+            raise TypeError("read_counts parameter should be tuple, list, or ReadCountPool")
 
     @staticmethod
     def _pr_bnllh(param, k_vec, n_vec):
@@ -111,12 +111,12 @@ class ASEeffectFactory:
     def bntest(self):
         """Do Binomial test on given data.
         """
-        x0 = 0.5
+        x_zero = 0.5
         k_vec = self._pr_get_k_vec()
         n_vec = self._pr_get_n_vec()
 
         opt_results = minimize(
-            self._pr_bnllh, x0, args=(k_vec, n_vec),
+            self._pr_bnllh, x_zero, args=(k_vec, n_vec),
             method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8}
         )
         self.optim_results["binomial"] = opt_results
@@ -128,10 +128,10 @@ class ASEeffectFactory:
         hypll = self._pr_bnllh(hyp_t, k_vec, n_vec)
 
         llr = - 2 * (estll - hypll)
-        p = chi2.sf(llr, 1)
+        p_val = chi2.sf(llr, 1)
 
         k_sum, n_sum = int(sum(k_vec)), int(sum(n_vec))
-        return llr, p, cmp(2 * k_sum, n_sum)  # likelihood ratio, p-value, direction
+        return llr, p_val, cmp(2 * k_sum, n_sum)  # likelihood ratio, p-value, direction
 
     @staticmethod
     def _pr_bbllh(params, k_vec, n_vec):
@@ -147,12 +147,12 @@ class ASEeffectFactory:
     def bbtest(self):
         """Do Beta-binomial test on given data.
         """
-        x0 = [0.5, 0.5]
+        x_zero = [0.5, 0.5]
         k_vec = self._pr_get_k_vec()
         n_vec = self._pr_get_n_vec()
 
         opt_results = minimize(
-            self._pr_bbllh, x0, args=(k_vec, n_vec),
+            self._pr_bbllh, x_zero, args=(k_vec, n_vec),
             method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8}
         )
         self.optim_results["beta_binomial"] = opt_results
@@ -164,16 +164,16 @@ class ASEeffectFactory:
         hypll = self._pr_bbllh([hyp_a, hyp_b], k_vec, n_vec)
 
         llr = - 2 * (estll - hypll)  # The likelihood value is timed by -1
-        p = chi2.sf(llr, 1)
+        p_val = chi2.sf(llr, 1)
 
         k_sum, n_sum = int(sum(k_vec)), int(sum(n_vec))
-        return llr, p, cmp(2 * k_sum, n_sum)  # likelihood ratio, p-value, direction
+        return llr, p_val, cmp(2 * k_sum, n_sum)  # likelihood ratio, p-value, direction
 
     def _pr_get_k_vec(self):
-        return self.rc[0]
+        return self.read_counts[0]
 
     def _pr_get_n_vec(self):
-        return list(map(sum, zip(self.rc[0], self.rc[1])))
+        return list(map(sum, zip(self.read_counts[0], self.read_counts[1])))
 
     def chi_square_test(self):
         """Using a Chi-square test on given data.
@@ -184,9 +184,9 @@ class ASEeffectFactory:
 class ASEFactory:
     """A class to produce ASE effects and matrix of regulatory sequence.
     """
-    _SAMPLE_ID_TO_IDX = None  # Has to be None for there's a if-else branch
-    _CHROM = None  # Static
-    _SAMPLE_ID = None  # Static
+    _sample_id_to_idx = None  # Has to be None for there's a if-else branch
+    _chrom = None  # Static
+    _sample_id = None  # Static
     _gene_ids = None
     hap_tab, snp_idx, snp_tab, seq_tab, ref_tab, alt_tab, ant_sql = [None] * 7
 
@@ -209,14 +209,14 @@ class ASEFactory:
         return []
 
     def _pr_sample_id_to_idx(self, chrom, sample_id):
-        if self._SAMPLE_ID_TO_IDX is None:
+        if self._sample_id_to_idx is None:
             hap_samples = self.hap_tab.get_node("/samples_{}".format(chrom))
-            self._SAMPLE_ID_TO_IDX = {
+            self._sample_id_to_idx = {
                 _sample[0].decode(): _idx
                 for _idx, _sample in enumerate(hap_samples)
             }
 
-        return self._SAMPLE_ID_TO_IDX.get(sample_id)
+        return self._sample_id_to_idx.get(sample_id)
 
     def _pr_get_nodes(self, chrom, requested_nodes=("hap", "rc", "snp", "seq")):
         node_pool = []
@@ -288,7 +288,7 @@ class ASEFactory:
         exon_pool = self.ant_sql.children(parent_id, featuretype="exon")
 
         # Using list to store each mRNA if necessary.
-        self._CHROM = mrna.seqid
+        self._chrom = mrna.seqid
         self.mrna_pool[gene_id] = mrna
         self.exon_pool[gene_id] = exon_pool
 
@@ -296,21 +296,24 @@ class ASEFactory:
         return M2B.get((a1_code, a2_code), "N")
 
     def _pr_gen_seq(self, seq_itvl=None, shift=5e2):
-        """"""
         # pdb.set_trace()
-        seq_code_pool, snp_indx_pool, snp_code_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._CHROM, ( "seq", "snp", "hap"))
+        seq_code_pool, snp_indx_pool, snp_code_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._chrom, ( "seq", "snp", "hap"))
         itvl_start, itvl_stop = int(seq_itvl.start - shift), seq_itvl.start
 
-        sample_idx = self._pr_sample_id_to_idx(self._CHROM, self._SAMPLE_ID)
+        sample_idx = self._pr_sample_id_to_idx(self._chrom, self._sample_id)
         seq_code = seq_code_pool[itvl_start: itvl_stop]
         snp_code = snp_code_pool[itvl_start: itvl_stop]
 
         ntstr = ""
-        for a1_code, a2_code in list(zip(seq_code, snp_code)):  # Scan the sequence one by one, could be too slow?
-            if a2_code != -1 and hap_phase_pool[a2_code, sample_idx] == 1:  # Is phased
+        # Scan the sequence one by one, could be too slow?
+        for a1_code, a2_code in list(zip(seq_code, snp_code)):
+            if a2_code != -1 and hap_phase_pool[a2_code, sample_idx] == 1:
                 snp_info = snp_indx_pool[a2_code]
                 a1_idx, a2_idx = hap_code_pool[a2_code, sample_idx * 2: sample_idx * 2 + 2]
-                a1_code, a2_code = ord(snp_info[a1_idx + 2]), ord(snp_info[a2_idx + 2])
+                if a1_idx == -1 or a2_idx == -1:
+                    a2_code = a1_code
+                else:
+                    a1_code, a2_code = snp_info[a1_idx + 2][0], snp_info[a2_idx + 2][0]
             else:
                 a2_code = a1_code
 
@@ -322,9 +325,9 @@ class ASEFactory:
         """Generate a ReadCountsPool.
         """
         # pdb.set_trace()
-        ref_rc_pool, alt_rc_pool, snp_code_pool, snp_indx_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._CHROM, ("rc", "snp", "hap"))
+        ref_rc_pool, alt_rc_pool, snp_code_pool, snp_indx_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._chrom, ("rc", "snp", "hap"))
 
-        sample_idx = self._pr_sample_id_to_idx(self._CHROM, self._SAMPLE_ID)
+        sample_idx = self._pr_sample_id_to_idx(self._chrom, self._sample_id)
         rcp = ReadCountPool()
         for exon_itvl in exon_pool:
             exon_start, exon_stop = exon_itvl.start - 1, exon_itvl.stop - 1
@@ -364,12 +367,12 @@ class ASEFactory:
         """
         rcp = self._pr_gen_rcp(exon_pool)
         # pdb.set_trace()
-        if len(rcp):
+        if len(rcp) != 0:
             aefact = ASEeffectFactory(rcp)
             if mthd == "bb":
-                return aefact.bbtest(), aefact.rc
+                return aefact.bbtest(), aefact.read_counts
             elif mthd == "bn":
-                return aefact.bbtest(), aefact.rc
+                return aefact.bbtest(), aefact.read_counts
 
         return None
 
@@ -379,11 +382,6 @@ class ASEFactory:
         Arguments:
             ant_db_name (None, str): The path to gene feature format annotations
             database converted by package `gffutils`.
-
-        Returns:
-        Raises:
-        To-do:
-        Note:
         """
         args = self.args
         self.hap_tab = self._pr_try_open(args.haplotypes)
@@ -392,16 +390,17 @@ class ASEFactory:
         self.seq_tab = self._pr_try_open(args.seq_tab)
         self.ref_tab = self._pr_try_open(args.ref_tab)
         self.alt_tab = self._pr_try_open(args.alt_tab)
-        self._SAMPLE_ID = args.sample_id
+        self._sample_id = args.sample_id
 
         if ant_db_name is None:
             ant_db_name = os.path.splitext(args.genome_annot)[0] + ".db"
 
         if not os.path.exists(ant_db_name):
-            gffutils.create_db(args.genome_annot, ant_db_name, disable_infer_transcripts=True, disable_infer_genes=True)
+            gffutils.create_db(args.genome_annot, ant_db_name,
+                               disable_infer_transcripts=True,
+                               disable_infer_genes=True)
 
         self.ant_sql = gffutils.FeatureDB(ant_db_name)
-
         self._parse_gene_ids()
 
         return self
@@ -424,11 +423,13 @@ class ASEFactory:
                 gene_id: self._pr_gen_seq(seq_itvl=mrna, shift=shift)
                 for gene_id, mrna in self.mrna_pool.items()}
         else:
-            logger.warn("The mrna_pool is empty, use gen_gnm_region() first.")
+            logger.warning("The mrna_pool is empty, use gen_gnm_region() first.")
 
         return self
 
     def gen_ase(self, mthd="bn", meta_exon=False):
+        """Generate ASE effects.
+        """
         if self.exon_pool:  # Not empty
             self.ase_pool = {
                 gene_id: self._pr_gen_ase(exon_pool, mthd, meta_exon)
@@ -441,12 +442,11 @@ class ASEFactory:
     def save_ase_report(self, opt_file=None):
         """Save the estimated ASE effects into disk.
         """
-        if opt_file:
-            opt_file = opt_file
-        elif self.args.as_ase_report:
-            opt_file = self.args.as_ase_report
-        else:
-            opt_file = self._SAMPLE_ID + ".ase_report.txt"
+        if opt_file is None:
+            if self.args.as_ase_report:
+                opt_file = self.args.as_ase_report
+            else:
+                opt_file = self._sample_id + ".ase_report.txt"
 
         header = "\t".join(["sample_id", "gene_id", "llh_ratio", "p_val", "ase_direction", "snp_ids", "snp_info", "snp_phase", "allele_counts"])
         with open(opt_file, "wt") as rfh:
@@ -455,31 +455,27 @@ class ASEFactory:
             for gene_id, ase_effect in self.ase_pool.items():
                 if ase_effect:
                     (llr, p_val, direction), (a1_rc, a2_rc, snp_info) = ase_effect
+                    snp_id_chain, snp_rc_chain, snp_pos_chain, snp_phase_chain = [""], ["A1|A2:"], ["CH,PS,REF,ALT:"], ["A1|A2:"]
+                    for _a1_rc, _a2_rc, ((snp_id, snp_pos, ref, alt), (a1_gntp, a2_gntp)) in zip(a1_rc, a2_rc, snp_info):
+                        snp_id, ref, alt = snp_id.decode(), ref.decode(), alt.decode()
+
+                        snp_pos = self._chrom + "," + str(snp_pos) + "," + ref + ">" + alt
+                        snp_phase = str(a1_gntp) + "|" + str(a2_gntp)
+                        snp_rc = str(_a1_rc) + "|" + str(_a2_rc)
+
+                        if snp_id == ".":
+                            snp_id = snp_pos
+
+                        snp_id_chain.append(snp_id)
+                        snp_rc_chain.append(snp_rc)
+                        snp_pos_chain.append(snp_pos)
+                        snp_phase_chain.append(snp_phase)
+
+                    info_list_1 = [self._sample_id, gene_id, str(llr), str(p_val), str(direction)]
+                    info_list_2 = [x[0] + ";".join(x[1:]) for x in [snp_id_chain, snp_pos_chain, snp_phase_chain, snp_rc_chain]]
                 else:
-                    print("Skipping {} for no ASE effect information".format(gene_id))
-                    continue
-
-                snp_id_chain, snp_rc_chain, snp_pos_chain, snp_phase_chain = [""], ["A1|A2:"], ["CH,PS,REF,ALT:"], ["A1|A2:"]
-
-                for _a1_rc, _a2_rc, ((snp_id, snp_pos, ref, alt), (a1_gntp, a2_gntp)) in zip(a1_rc, a2_rc, snp_info):
-                    snp_id = snp_id.decode()
-                    ref = ref.decode()
-                    alt = alt.decode()
-
-                    snp_pos = self._CHROM + "," + str(snp_pos) + "," + ref + ">" + alt
-                    snp_phase = str(a1_gntp) + "|" + str(a2_gntp)
-                    snp_rc = str(_a1_rc) + "|" + str(_a2_rc)
-
-                    if snp_id == ".":
-                        snp_id = snp_pos
-
-                    snp_id_chain.append(snp_id)
-                    snp_rc_chain.append(snp_rc)
-                    snp_pos_chain.append(snp_pos)
-                    snp_phase_chain.append(snp_phase)
-
-                info_list_1 = [self._SAMPLE_ID, gene_id, str(llr), str(p_val), str(direction)]
-                info_list_2 = [x[0] + ";".join(x[1:]) for x in [snp_id_chain, snp_pos_chain, snp_phase_chain, snp_rc_chain]]
+                    info_list_1 = [self._sample_id, gene_id, "NA", "NA", "NA"]
+                    info_list_2 = ["NA"] * 4
 
                 est_result = "\t".join(info_list_1 + info_list_2)
                 rfh.write(est_result + "\n")
@@ -492,23 +488,21 @@ class ASEFactory:
         Args:
             opt_file (str, optional, None): The output file.
             save_fmt (str, optional, fa.gz): output format. ["fa", "fa.gz"]
-        
+
         Returns:
             self (:obj:`ASEFactory`): The object itself.
 
         Raises:
             ValueError: If save_fmt argument is not one of [fa, fa.gz]
-
         """
-        if opt_file:
-            opt_file = opt_file
-        elif self.args.as_train_set:
-            opt_file = self.args.as_train_set
-        else:
-            opt_file = self._SAMPLE_ID + ".ntsq_and_ase." + save_fmt
+        if opt_file is None:
+            if self.args.as_train_set:
+                opt_file = self.args.as_train_set
+            else:
+                opt_file = self._sample_id + ".ntsq_and_ase." + save_fmt
 
         _opt_str = ""
-        _sample_id = self._SAMPLE_ID
+        _sample_id = self._sample_id
         for _gene_id in self.ntseq_pool.keys():
             _ntseq = self.ntseq_pool[_gene_id]
             _ase = self.ase_pool[_gene_id]
@@ -532,6 +526,8 @@ class ASEFactory:
         return self
 
     def shutdown(self):
+        """Close all open HDF5 files.
+        """
         self._pr_try_close(self.hap_tab)
         self._pr_try_close(self.snp_idx)
         self._pr_try_close(self.snp_tab)
