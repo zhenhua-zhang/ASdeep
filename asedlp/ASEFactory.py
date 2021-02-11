@@ -324,13 +324,12 @@ class ASEFactory:
     def _pr_gen_rcp(self, exon_pool):
         """Generate a ReadCountsPool.
         """
-        # pdb.set_trace()
         ref_rc_pool, alt_rc_pool, snp_code_pool, snp_indx_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._chrom, ("rc", "snp", "hap"))
 
         sample_idx = self._pr_sample_id_to_idx(self._chrom, self._sample_id)
         rcp = ReadCountPool()
         for exon_itvl in exon_pool:
-            exon_start, exon_stop = exon_itvl.start - 1, exon_itvl.stop - 1
+            exon_start, exon_stop = exon_itvl.start - 1, exon_itvl.stop
             _id = (exon_itvl.seqid, exon_start, exon_stop)
 
             het_loci = snp_indx_pool[exon_start: exon_stop]
