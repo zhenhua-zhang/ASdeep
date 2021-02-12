@@ -105,7 +105,7 @@ EOF
     exit 0
 }
 
-set -Ee
+# set -Ee
 
 long_opts="work-dir:,fastq-id:,gff-file:,sample-id-file:,gene-id-file-dir:,venv-path:,debug,help"
 opt=$(getopt -l $long_opts -- "w:i:a:G:s:v:dh" "$@")
@@ -149,43 +149,37 @@ sample_id_file=${sample_id_file:?-s/--sample-id-file is required!!}
 if [[ ! -e $sample_id_file ]]; then
     echoErro "Failed to find -s/--sample-id-file: $sample_id_file"
 fi
-
-
-# # Ensure the job were executed under the job array mode of slurm
-# if [ "${SLURM_ARRAY_TASK_ID}xxx" == "xxx" ]; then
-#     echo "[E]: the script should be run under job array mode."
-#     exit 1
-# fi
-
-# Config
-chrom_id=${SLURM_ARRAY_TASK_ID:=1}
 sample_id=$(grep -w "$fastq_id" "$sample_id_file" | cut -f2)
 cohort_id=$(grep -w "$fastq_id" "$sample_id_file" | cut -f4)
 
-# Input
-gene_id_file=$gene_id_file_dir/chr$chrom_id.txt
-seq_tab=$work_dir/fastaH5db/chr$chrom_id.h5
-hap_tab=$work_dir/snpH5db/$cohort_id/$chrom_id/haplotype.h5
-snp_tab=$work_dir/snpH5db/$cohort_id/$chrom_id/snps_tab.h5
-snp_idx=$work_dir/snpH5db/$cohort_id/$chrom_id/snps_index.h5
-ref_read_counts=$work_dir/optDir/$fastq_id/waspOptDir/perChrom/$chrom_id/${fastq_id}_$chrom_id.refAlleleCounts.h5
-alt_read_counts=$work_dir/optDir/$fastq_id/waspOptDir/perChrom/$chrom_id/${fastq_id}_$chrom_id.altAlleleCounts.h5
-
-# Output
-ase_opt_dir=$work_dir/optDir/$fastq_id/aseOptDir
-ase_report=$ase_opt_dir/aseReport/${fastq_id}_${chrom_id}_ase_report.txt
-train_set=$ase_opt_dir/trainSet/${fastq_id}_${chrom_id}_matrix_and_ase.fa.gz
 
 if [[ ${debug:=0} -eq 1 ]]; then
     cmd="bash"
 else
-    cmd="sbatch --time=0:19:0 --mem=5G --array=1-22 --cpus-per-task=1"
+    cmd="sbatch --time=0:10:0 --mem=2G --array=1-22 --cpus-per-task=1"
     cmd=$cmd" --job-name=${fastq_id}_asedlp_quant"
-    cmd=$cmd" --output=$work_dir/logDir/%A_%a_${fastq_id}_asedlp_quant.log"
+    cmd=$cmd" --output=$work_dir/logDir/asedlp_quant/%A_%a_${fastq_id}_asedlp_quant.log"
 fi
 
 $cmd <<EOF
 #!/bin/bash
+
+# Config
+chrom_id=\${SLURM_ARRAY_TASK_ID:=12}
+
+# Input
+gene_id_file=$gene_id_file_dir/chr\$chrom_id.txt
+seq_tab=$work_dir/fastaH5db/chr\$chrom_id.h5
+hap_tab=$work_dir/snpH5db/$cohort_id/\$chrom_id/haplotype.h5
+snp_tab=$work_dir/snpH5db/$cohort_id/\$chrom_id/snps_tab.h5
+snp_idx=$work_dir/snpH5db/$cohort_id/\$chrom_id/snps_index.h5
+ref_read_counts=$work_dir/optDir/$fastq_id/waspOptDir/perChrom/\$chrom_id/${fastq_id}_\$chrom_id.refAlleleCounts.h5
+alt_read_counts=$work_dir/optDir/$fastq_id/waspOptDir/perChrom/\$chrom_id/${fastq_id}_\$chrom_id.altAlleleCounts.h5
+
+# Output
+ase_opt_dir=$work_dir/optDir/$fastq_id/aseOptDir
+ase_report=\$ase_opt_dir/aseReport/${fastq_id}_\${chrom_id}_ase_report.txt
+train_set=\$ase_opt_dir/trainSet/${fastq_id}_\${chrom_id}_matrix_and_ase.fa.gz
 
 host_name=\$(hostname)
 if [[ \${host_name} =~ "genetics" ]]; then
@@ -207,17 +201,17 @@ if [ "${venv_path}xxx" != "xxx" ]; then
     source "$venv_path"/bin/activate
 fi
 
-mkdir -p "$ase_opt_dir"/{aseReport,trainSet}
+mkdir -p "\$ase_opt_dir"/{aseReport,trainSet}
 ~/Documents/projects/wp_ase_dlp/scripts/asedlp/asedlp quant \
     --sample-id "$sample_id" \
-    --gene-id-file "$gene_id_file" \
-    --haplotypes "$hap_tab" \
-    --snp-tab "$snp_tab" \
-    --snp-index "$snp_idx" \
-    --sequence-tab "$seq_tab" \
-    --ref-read-counts "$ref_read_counts" \
-    --alt-read-counts "$alt_read_counts" \
     --genome-annot "$gff_file" \
-    --save-as-ase-report "$ase_report" \
-    --save-as-train-set "$train_set"
+    --gene-id-file "\$gene_id_file" \
+    --haplotypes "\$hap_tab" \
+    --snp-tab "\$snp_tab" \
+    --snp-index "\$snp_idx" \
+    --sequence-tab "\$seq_tab" \
+    --ref-read-counts "\$ref_read_counts" \
+    --alt-read-counts "\$alt_read_counts" \
+    --save-as-ase-report "\$ase_report" \
+    --save-as-train-set "\$train_set"
 EOF

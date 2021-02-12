@@ -7,10 +7,8 @@ TODO:
 """
 
 import textwrap
-import logging
 import gzip
 import math
-import pdb
 import sys
 import os
 
@@ -371,7 +369,7 @@ class ASEFactory:
             if mthd == "bb":
                 return aefact.bbtest(), aefact.read_counts
             elif mthd == "bn":
-                return aefact.bbtest(), aefact.read_counts
+                return aefact.bntest(), aefact.read_counts
 
         return None
 
