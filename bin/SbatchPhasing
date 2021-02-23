@@ -51,12 +51,13 @@ fi
 seed=31415
 
 
-sbatch --time=$runTime \
+sbatch \
     --mem=$runMems \
-    --output=$log_dir/%A-%a_%u_phasing_$cohort.log \
-    --job-name=phasing-$cohort \
+    --time=$runTime \
     --array=$runArray \
     --cpus-per-task=$runCpus \
+    --job-name=phasing-$cohort \
+    --output=$log_dir/%A-%a_%u_phasing_$cohort.log \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
 # Ensure Slurm settings is updated.
@@ -146,8 +147,15 @@ java -jar ~/tools/beagle/beagle.18May20.d20.jar \
     nthreads=$runCpus \
     out=\$imputed_filtered_adj_phased_gntp
 
-EOF
+bcftools view \
+    --include 'TYPE=="snp" && INFO/MAF>=0.0005 && INFO/R2>=0.3 && N_ALT==1' \
+    --threads $runCpus \
+    --output-type z \
+    --output-file \$imputed_filtered_adj_phased_gntp \
+    \${imputed_filtered_adj_phased_gntp/.vcf.gz/-singlealt.vcf.gz}
 
+rm -f \$imputed_filtered_adj_phased_gntp
+EOF
 
 # FIXME:
 # 

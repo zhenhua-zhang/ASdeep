@@ -7,10 +7,13 @@ TODO:
 """
 
 import textwrap
+import logging
 import gzip
 import math
 import sys
 import os
+
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{', level=logging.INFO)
 
 from collections import UserDict
 
@@ -21,10 +24,10 @@ import tables
 from scipy.optimize import minimize
 from scipy.stats import betabinom, binom, chi2
 
-from zutils import cmp, logger
+from zutils import cmp
 from zutils import M2B
 
-NNTVEC = [0, 0, 0, 0]  # Base not in ACGTN
+NNTVEC = [0, 0, 0, 0] # Base not in ACGTN
 NT2VEC = {"A": [1, 0, 0, 0], "C": [0, 1, 0, 0], "G": [0, 0, 1, 0], "T": [0, 0, 0, 1]}
 
 class ReadCountPool(UserDict):
@@ -71,7 +74,7 @@ class ReadCountPool(UserDict):
         """Unpack the object.
         """
         a1_rc_pool, a2_rc_pool, info_pool = [], [], []
-        for _key, _value in self.data.items():
+        for _, _value in self.data.items():
             a1_rc_pool.extend(_value[0])
             a2_rc_pool.extend(_value[1])
             info_pool.extend(_value[2])
@@ -119,7 +122,7 @@ class ASEeffectFactory:
         )
         self.optim_results["binomial"] = opt_results
 
-        _est_t = opt_results["x"]
+        # _est_t = opt_results["x"]
         estll = opt_results["fun"]
 
         hyp_t = 0.5
@@ -129,7 +132,7 @@ class ASEeffectFactory:
         p_val = chi2.sf(llr, 1)
 
         k_sum, n_sum = int(sum(k_vec)), int(sum(n_vec))
-        return llr, p_val, cmp(2 * k_sum, n_sum)  # likelihood ratio, p-value, direction
+        return llr, p_val, cmp(2 * k_sum, n_sum) # likelihood ratio, p-value, direction
 
     @staticmethod
     def _pr_bbllh(params, k_vec, n_vec):
@@ -155,17 +158,17 @@ class ASEeffectFactory:
         )
         self.optim_results["beta_binomial"] = opt_results
 
-        _est_a, _est_b = opt_results["x"]
+        # _est_a, _est_b = opt_results["x"]
         estll = opt_results["fun"]
 
         hyp_a = hyp_b = opt_results["x"].mean()
         hypll = self._pr_bbllh([hyp_a, hyp_b], k_vec, n_vec)
 
-        llr = - 2 * (estll - hypll)  # The likelihood value is timed by -1
+        llr = - 2 * (estll - hypll) # The likelihood value is timed by -1
         p_val = chi2.sf(llr, 1)
 
         k_sum, n_sum = int(sum(k_vec)), int(sum(n_vec))
-        return llr, p_val, cmp(2 * k_sum, n_sum)  # likelihood ratio, p-value, direction
+        return llr, p_val, cmp(2 * k_sum, n_sum) # likelihood ratio, p-value, direction
 
     def _pr_get_k_vec(self):
         return self.read_counts[0]
@@ -231,7 +234,7 @@ class ASEFactory:
             elif "seq" == node_name:
                 node_pool.append(self.seq_tab.get_node("/{}".format(chrom)))
             else:
-                logger.warn("Unsupported type of node: " + node_name)
+                logging.warn("Unsupported type of node: " + node_name)
 
         return tuple(node_pool)
 
@@ -290,7 +293,8 @@ class ASEFactory:
         self.mrna_pool[gene_id] = mrna
         self.exon_pool[gene_id] = exon_pool
 
-    def _pr_encode_bnt(self, a1_code, a2_code):
+    @staticmethod
+    def _pr_encode_bnt(a1_code, a2_code):
         return M2B.get((a1_code, a2_code), "N")
 
     def _pr_gen_seq(self, seq_itvl=None, shift=5e2):
@@ -322,7 +326,7 @@ class ASEFactory:
     def _pr_gen_rcp(self, exon_pool):
         """Generate a ReadCountsPool.
         """
-        ref_rc_pool, alt_rc_pool, snp_code_pool, snp_indx_pool, hap_code_pool, hap_phase_pool = self._pr_get_nodes(self._chrom, ("rc", "snp", "hap"))
+        ref_rc_pool, alt_rc_pool, snp_code_pool, snp_indx_pool, hap_code_pool, _ = self._pr_get_nodes(self._chrom, ("rc", "snp", "hap"))
 
         sample_idx = self._pr_sample_id_to_idx(self._chrom, self._sample_id)
         rcp = ReadCountPool()
@@ -394,8 +398,8 @@ class ASEFactory:
 
         if not os.path.exists(ant_db_name):
             gffutils.create_db(args.genome_annot, ant_db_name,
-                               disable_infer_transcripts=True,
-                               disable_infer_genes=True)
+                    disable_infer_transcripts=True,
+                    disable_infer_genes=True)
 
         self.ant_sql = gffutils.FeatureDB(ant_db_name)
         self._parse_gene_ids()
@@ -420,7 +424,7 @@ class ASEFactory:
                 gene_id: self._pr_gen_seq(seq_itvl=mrna, shift=shift)
                 for gene_id, mrna in self.mrna_pool.items()}
         else:
-            logger.warning("The mrna_pool is empty, use gen_gnm_region() first.")
+            logging.warning("The mrna_pool is empty, use gen_gnm_region() first.")
 
         return self
 
@@ -432,7 +436,7 @@ class ASEFactory:
                 gene_id: self._pr_gen_ase(exon_pool, mthd, meta_exon)
                 for gene_id, exon_pool in self.exon_pool.items()}
         else:
-            logger.warn("The exon_pool is empty, use gen_gnm_region() first.")
+            logging.warn("The exon_pool is empty, use gen_gnm_region() first.")
 
         return self
 

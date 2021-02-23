@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Author      : Zhenhua Zhang
-# Email       : zhenhua.zhang217@gmail.com
-# License     : MIT
+# Author            : Zhenhua Zhang
+# Email             : zhenhua.zhang217@gmail.com
+# License         : MIT
 # Create date : 2020 Mar 07 10:04:54
-# Last update : 2020 Nov 03 10:04:47
 
 """Deep learning methods to predict allele-specific expression effects by
 integrating RNA-seq results and haplotypes.
@@ -28,13 +27,12 @@ TDOO:
 
 import pdb
 import sys
+import logging
 import argparse
 
 import numpy as np
 
-from zutils import logger
-# sys.path.append(os.path.split(sys.path[0])[0])
-
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{', level=logging.INFO)
 
 def get_args():
     '''Get CLI arguments.'''
@@ -59,10 +57,10 @@ def get_args():
     quant_parser.add_argument("--save-as-train-set", default=None, dest="as_train_set", help="The file to which write the training dataset into. Default: %(default)s")
 
     merge_parser = sub_parsers.add_parser("merge", help="Merge allele specific expression quantification report by subcommand quant")
-    merge_parser.add_argument("-r", "--report-files", required=True, dest="report_files", nargs="*", help="The pattern to read input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser. Default: %(default)s")
-    merge_parser.add_argument("-p", "--save-prefix", default="heatmap.pdf", dest="save_prefix", help="The file to which write the heatmap into. Default: %(default)s")
+    merge_parser.add_argument("-r", "--report-files", required=True, dest="report_files", nargs="*", help="Input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser. Default: %(default)s")
+    merge_parser.add_argument("-p", "--save-prefix", default="ase_report", dest="save_prefix", help="The file to which write the heatmap into. Default: %(default)s")
     merge_parser.add_argument("-g", "--genome-annot", default="./genome.gff", dest="genome_annot", help="Path to GFF / GTF file to read gene structure information from. Default: %(default)s")
-    merge_parser.add_argument("--max-na-per-gene", default=50, dest="max_na_per_gene", type=int, help="The maximum number of NAs in row (gene id) in P-value matrix. Default: %(default)s")
+    merge_parser.add_argument("--max-na-per-gene", default=1335, dest="max_na_per_gene", type=int, help="The maximum number of NAs in row (gene id) in P-value matrix. Default: %(default)s")
 
     train_parser = sub_parsers.add_parser("train", help="Train the model on quantfified ASE effects.")
     train_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
@@ -70,7 +68,7 @@ def get_args():
     train_parser.add_argument("-s", "--model-state-path", default="./torch_model.pth", dest="model_state_path", help="The path to which save the model state dict. Default: %(default)s")
     # train_parser.add_argument("-l", "--loss-curve-path", default="./loss_curve", dest="loss_curve_path", help="The path into which save the training loss curve. Default: %(default)s")
     train_parser.add_argument("-L", "--logging-path", default="./logging_run", dest="logging_path", help="The path into which write the logging files for tensorboard. Default: %(default)s")
-    train_parser.add_argument("-r", "--learning-rate", type=float, default=1e-5, dest="learning_rate", help="Learning rate.  Default: %(default)s")
+    train_parser.add_argument("-r", "--learning-rate", type=float, default=1e-5, dest="learning_rate", help="Learning rate.    Default: %(default)s")
     train_parser.add_argument("-e", "--n-epoch", default=50, type=int, dest="n_epoch", help="The number of epoch will be run. Default: %(default)s")
     # train_parser.add_argument("-x", "--cv-times", default=8, type=int, dest="cv_times", help="Times of cross-validation. Default: %(default)s")
     train_parser.add_argument("-R", "--random-state", default=31415, type=int, dest="random_state", help="The random seed for torch. Default: %(default)s")
@@ -96,7 +94,7 @@ def quant(args):
     try:
         from ASEFactory import ASEFactory
     except ImportError as ime:
-        logger.error("Import error: {}".format(ime))
+        logging.error("Import error: {}".format(ime))
         sys.exit(1)
     afactory = ASEFactory(args)
     afactory.init() \
@@ -113,7 +111,7 @@ def merge(args):
     try:
         from ASEReport import ASEReport
     except ImportError as ime:
-        logger.error("Import error: {}".format(ime))
+        logging.error("Import error: {}".format(ime))
         sys.exit()
 
     file_path_list = args.report_files
@@ -133,9 +131,9 @@ def train(args):
         import torch
         import torch.nn as nn
         import torchvision.models as models
-        from DLPFactory import DLPFactory, CNNModel
+        from DLPFactory import DLPFactory
     except ImportError as ime:
-        logger.error("Import error: {}".format(ime))
+        logging.error("Import error: {}".format(ime))
         sys.exit(1)
 
     file_path_pool = args.file_path_pool
@@ -160,8 +158,8 @@ def train(args):
     net.fc = nn.Linear(in_features=2048, out_features=3, bias=True)
 
     dfactory = DLPFactory(net, gene_id, file_path_pool,
-                          logging_path=logging_path,
-                          log_per_n_epoch=log_per_n_epoch)
+                            logging_path=logging_path,
+                            log_per_n_epoch=log_per_n_epoch)
     dfactory.init() \
             .load_dataset() \
             .train_test_split(pp_train) \
@@ -169,13 +167,8 @@ def train(args):
             .save_model(model_state_path)
 
 
-def pred(args):
+def pred():
     '''Predict.'''
-    try:
-        from DLPFactory import DLPFactory, CNNModel
-    except ImportError as ime:
-        logger.error("Import error: {}".format(ime))
-        sys.exit(1)
     raise NotImplementedError("Not implemented yet!!!")
 
 
@@ -185,7 +178,7 @@ def cam(args):
     try:
         from CamFactory import CamFactory
     except ImportError as ime:
-        logger.error("Import error: {}".format(ime))
+        logging.error("Import error: {}".format(ime))
         sys.exit(1)
 
     gene_id = args.gene_id
@@ -205,7 +198,7 @@ def main():
     '''
     parser = get_args()
     args = parser.parse_args()
-    #pdb.set_trace()
+    # pdb.set_trace()
     if args.subcmd == "quant":
         quant(args)
     elif args.subcmd == "merge":
@@ -215,7 +208,7 @@ def main():
     elif args.subcmd == "cam":
         cam(args)
     elif args.subcmd == 'pred':
-        pred(args)
+        pred()
     else:
         parser.print_help()
 

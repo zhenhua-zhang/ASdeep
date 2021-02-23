@@ -8,9 +8,8 @@ Reference: https://github.com/zhoubolei/CAM/blob/master/pytorch_CAM.py
 ./asedlp cam --gene-id ENSG00000161570 --file-path ../../workdir/optdir/**/aseOptdir/train_set/*_17_matrix_and_ase.npz --model-state ../../outputs/models/version_0.1.0/ENSG00000161570/20200621_184849.model_state.ptz --save-path test/output_pic
 """
 
-import sys
-import logging
 import pdb
+import logging
 
 import cv2
 import torch
@@ -22,9 +21,9 @@ from torchvision import models
 from torch.autograd import Variable
 from torch.nn import functional as func
 
-from zutils import logger
 from ASEDataset import ASEDataset, ReshapeMatrixAndPickupLabel, MultipleTestAdjustMent
 
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{', level=logging.INFO)
 
 class CamFactory:
     def __init__(self, net=None, gene_id=None, file_path=None, feature_layer="layer4"):
@@ -171,7 +170,7 @@ class CamFactory:
     def _draw_cam_along_seq(self, save_path, title):
         fig, ax = plt.subplots()
         height, width = self.seq_img.shape
-        average_cam = np.sum(self.seq_img, axis=1) / width / 255  # 255 is the scale factor
+        average_cam = np.sum(self.seq_img, axis=1) / width / 255    # 255 is the scale factor
 
         ax.plot(range(height)[::-1], average_cam)
         ax.set_title(title)

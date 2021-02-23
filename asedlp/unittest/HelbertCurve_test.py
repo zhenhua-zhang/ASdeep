@@ -17,9 +17,7 @@ sys.path.insert(1, "..")
 
 try:
     from HelbertCurve import HelbertCurve
-    from zutils import logger
 except ImportError as err:
-    logger.error(err)
     sys.exit()
 
 

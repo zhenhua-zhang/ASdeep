@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 """A simple implementation for Hilbert curve.
 """
-from textwrap import wrap
+import logging
 import itertools as it
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-from zutils import logger,B2M
+from zutils import B2M
 
 
 class HelbertCurve:
@@ -45,8 +45,7 @@ class HelbertCurve:
         self.y_pool = []
 
         self.kmers_idx_pool = []
-        self.onehot_enc_list = [
-            "".join(x) for x in it.product("ACGT", repeat=self.kmers)]
+        self.onehot_enc_list = ["".join(x) for x in it.product("ACGT", repeat=self.kmers)]
 
     def _bcode2mcode(self): # Convert biallelic seq into two monoallelic seq
         if isinstance(self.seq, (list, tuple)) and len(self.seq) == 2:
@@ -77,7 +76,7 @@ class HelbertCurve:
             else:
                 self.kmers_idx_pool = kmers_allele_1 + kmers_allele_2[::-1]
                 if self.seqorder != "sm":
-                    logger.error("Unknown way to order biallelic seq,"
+                    logging.error("Unknown way to order biallelic seq,"
                                  " try default: sm")
         else:
             self.kmers_idx_pool = self._make_kmers_base(self.seq)
@@ -111,10 +110,10 @@ class HelbertCurve:
             self.x_pool.append(X)
             self.y_pool.append(Y)
         else:
-            self._hilbert_base(x0,          y0,           yi/2, yj/2, xi/2, xj/2,n-1)
-            self._hilbert_base(x0+xi/2,     y0+xj/2,      xi/2, xj/2, yi/2, yj/2,n-1)
-            self._hilbert_base(x0+xi/2+yi/2,y0+xj/2+yj/2, xi/2, xj/2, yi/2, yj/2,n-1)
-            self._hilbert_base(x0+xi/2+yi,  y0+xj/2+yj,  -yi/2,-yj/2,-xi/2,-xj/2,n-1)
+            self._hilbert_base(x0,           y0,            yi/2,  yj/2,  xi/2,  xj/2, n-1)
+            self._hilbert_base(x0+xi/2,      y0+xj/2,       xi/2,  xj/2,  yi/2,  yj/2, n-1)
+            self._hilbert_base(x0+xi/2+yi/2, y0+xj/2+yj/2,  xi/2,  xj/2,  yi/2,  yj/2, n-1)
+            self._hilbert_base(x0+xi/2+yi,   y0+xj/2+yj,   -yi/2, -yj/2, -xi/2, -xj/2, n-1)
 
     def _hilbert(self, start_point=None, x_vector=None, y_vector=None,
                  order=None):
@@ -148,7 +147,7 @@ class HelbertCurve:
             self.hcurve_matrix[int(j)][int(i)] = base
 
     def _crop_blank(self):
-        logger.error("Not implementated yet")
+        logging.error("Not implementated yet")
 
     def seq_to_hcurve(self, crop_blank=False):
         """Convert sequence into a Helbert curve.
@@ -164,7 +163,7 @@ class HelbertCurve:
         return self
 
     def hcurve_to_img(self, output_prefix="./", scatter=True, connect=True,
-                      color=True, kmer_text=True, figsize=20, fmt="png"):
+                        color=True, kmer_text=True, figsize=20, fmt="png"):
         """Plot the Helbert curve."""
         fig, ax = plt.subplots()
 
@@ -186,12 +185,12 @@ class HelbertCurve:
                     text = "NULL"
                 ax.text(i, j, text, ha="center", va="center")
 
-        fig.set_figwidth(figsize)   # Set size by k-mers
+        fig.set_figwidth(figsize)     # Set size by k-mers
         fig.set_figheight(figsize)
         fig.set_tight_layout(True)
 
         save_path = "{}helbert_curve.{}".format(output_prefix, fmt)
-        # logger.info("Please check \"{}\" for the pic".format(save_path))
+        # logging.warning("Please check \"{}\" for the pic".format(save_path))
         fig.savefig(save_path)
 
         return self

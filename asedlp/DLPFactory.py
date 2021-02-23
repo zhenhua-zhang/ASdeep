@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Author      : Zhenhua Zhang
-# Email       : zhenhua.zhang217@gmail.com
+# Author        : Zhenhua Zhang
+# Email         : zhenhua.zhang217@gmail.com
 # License     : MIT
 # Created date: Thu 12 Mar 2020 05:44:52 PM CET
 
 """A module to train a convolutionary neural network."""
 
 import sys
+import logging
 
-import numpy as nmp
 import seaborn as sbn
 import matplotlib.pyplot as plt
 from sklearn.model_selection import StratifiedKFold, train_test_split
@@ -24,7 +24,6 @@ from torch.utils.data import DataLoader, Subset
 from torch.utils.tensorboard import SummaryWriter
 
 from ASEDataset import ASEDataset, ReshapeMatrixAndPickupLabel, MultipleTestAdjustMent
-from zutils import logger
 
 
 class DLPFactory:
@@ -39,11 +38,11 @@ class DLPFactory:
         self.file_path_pool = file_path_pool   # Files on which train and test
         self.log_per_n_epoch = log_per_n_epoch # Logging point per N epoches
 
-        self.dataset = None    # DataSet() for the training
-        self.cv_splits = None  # cross validation splits
-        self.tt_splits = None  # train:test splits
+        self.dataset = None   # DataSet() for the training
+        self.cv_splits = None # cross validation splits
+        self.tt_splits = None # train:test splits
 
-        self.train_loss_list = []  # Loss
+        self.train_loss_list = [] # Loss
 
         self.writer = None # SummaryWriter for TensorBoard
 
@@ -78,11 +77,11 @@ class DLPFactory:
             if model_state is not None:
                 self.net.load_state_dict(torch.load(model_state))
             else:
-                logger.error("The model has NOT trained, require model states")
+                logging.error("The model has NOT trained, require model states")
                 sys.exit()
 
         if testloader is None:
-            logger.error("Missing testloader!! Exit...")
+            logging.error("Missing testloader!! Exit...")
             return None, None, None, None, None, None
 
         if criterion is None:
@@ -120,7 +119,7 @@ class DLPFactory:
     def _train(self, eps, optimizer, device, criterion, splits, batch_size, shuffle, num_workers, log_per_n_epoch=5):
         """The exact implementation of train.
         """
-        logger.info("| CV | Operation | Epoch | Accuracy | Precision | Recall | ROC_AUC | Loss")
+        logging.info("| CV | Operation | Epoch | Accuracy | Precision | Recall | ROC_AUC | Loss")
         for cv_idx, (train_idx, test_idx) in enumerate(splits):
             trainloader = DataLoader(Subset(self.dataset, train_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
             testloader = DataLoader(Subset(self.dataset, test_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
@@ -159,7 +158,7 @@ class DLPFactory:
                     self.writer.add_scalar("Accuracy/Train", tn_accu, epoch)
                     self.writer.add_scalar("Recall/Train", tn_rcll, epoch)
                     self.writer.add_scalar("Loss/Train", running_loss, epoch)
-                    logger.info("| {} | Train | {: ^3} | {: ^5.2f}% | {: ^5.2f}% | {: ^5.2f}% | {: ^5.2f}% | {:.4f}".format(cv_idx + 1, epoch+1, tn_accu, tn_prec, tn_rcll, tn_roc_auc, running_loss))
+                    logging.info("| {} | Train | {: ^3} | {: ^5.2f}% | {: ^5.2f}% | {: ^5.2f}% | {: ^5.2f}% | {:.4f}".format(cv_idx + 1, epoch+1, tn_accu, tn_prec, tn_rcll, tn_roc_auc, running_loss))
 
                     true_label_list, pred_label_list, pred_score_list, tt_loss = self._test(self.net, testloader)
                     tt_fpr, tt_tpr, tt_roc_auc, tt_prec, tt_accu, tt_rcll = self._eval_metric(true_label_list, pred_label_list, pred_score_list)
@@ -168,7 +167,7 @@ class DLPFactory:
                     self.writer.add_scalar("Accuracy/Test", tt_accu, epoch)
                     self.writer.add_scalar("Recall/Test", tt_rcll, epoch)
                     self.writer.add_scalar("Loss/Test", tt_loss, epoch)
-                    logger.info("| {} | Test  | {: ^3} | {: ^5.2f}% | {: ^5.2f}% | {: ^5.2f}% | {: ^5.2f}% | {:.4f}".format(cv_idx+1, epoch+1, tt_accu, tt_prec, tt_rcll, tt_roc_auc, tt_loss))
+                    logging.info("| {} | Test    | {: ^3} | {: ^5.2f}% | {: ^5.2f}% | {: ^5.2f}% | {: ^5.2f}% | {:.4f}".format(cv_idx+1, epoch+1, tt_accu, tt_prec, tt_rcll, tt_roc_auc, tt_loss))
 
                 cv_loss_list.append(running_loss)
 
@@ -192,8 +191,8 @@ class DLPFactory:
         dataset_trans = kwargs.get("dataset_trans", MultipleTestAdjustMent())
 
         self.dataset = ASEDataset(file_path_pool=file_path_pool,
-                                  gene_id=gene_id, element_trans=element_trans,
-                                  dataset_trans=dataset_trans)
+                                    gene_id=gene_id, element_trans=element_trans,
+                                    dataset_trans=dataset_trans)
 
         return self
 
@@ -241,7 +240,7 @@ class DLPFactory:
         device = self._check_device()
 
         if self.cv_splits is None and self.tt_splits is None:
-            logger.error("No train and test splits were found.")
+            logging.error("No train and test splits were found.")
             return self
 
         if self.tt_splits is None:
@@ -251,7 +250,7 @@ class DLPFactory:
 
         log_per_n_epoch = self.log_per_n_epoch
         self._train(eps, optimizer, device, criterion, splits, batch_size,
-                       shuffle, num_workers, log_per_n_epoch=log_per_n_epoch)
+                         shuffle, num_workers, log_per_n_epoch=log_per_n_epoch)
 
         self.writer.close()
         return self
@@ -267,7 +266,7 @@ class DLPFactory:
         elif n_cv > 1:
             loss_axe_pair = zip(train_loss_list, axes)
         else:
-            logger.error("The loss list is empty!!")
+            logging.error("The loss list is empty!!")
             return self
 
         for loss, ax in loss_axe_pair:
@@ -290,7 +289,7 @@ class DLPFactory:
         """Save the trained model, typlically the state dictionary.
         """
         if self.net is None:
-            logger.error("The mode is empty, have you ever run the train() method?")
+            logging.error("The mode is empty, have you ever run the train() method?")
             sys.exit()
 
         torch.save(self.net.state_dict(), path)
@@ -304,12 +303,12 @@ class DLPFactory:
 
         return self
 
-    def predict(self, matrix=None):
+    def predict(self):
         """Apply the model on given dataset.
         """
-        logger.warnings("Note implemented yet!")
+        logging.warning("Note implemented yet!")
 
         return self
 
 if __name__ == "__main__":
-    logger.error("This file is meant to be imported.")
+    logging.error("This file is meant to be imported.")

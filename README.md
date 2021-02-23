@@ -49,13 +49,16 @@ In total, there are 3,768 genotypes available. For each cohort, there are
 | NTR_Aff6     | 1805    | /groups/umcg-bios/prm02/projects/HRC_imputation/NTR/Affy6/results/unzipped
 | PAN          | 192     | /groups/umcg-bios/prm02/projects/HRC_imputation/PAN/results/unzipped
 | RS           | 877     | /groups/umcg-bios/prm02/projects/HRC_imputation/RS/results/unzipped
-| LLS_OminExpr | 236     |
-| LLS_660Q     | 377     |
-| LL           | 1134    |
+| LLS_OminExpr | 236     | /groups/umcg-bios/prm02/projects/HRC_imputation/LLS/OmniExpr/results/unzipped
+| LLS_660Q     | 377     | /groups/umcg-bios/prm02/projects/HRC_imputation/LLS/660Q/results/unzipped
+| LL           | 1134    | /groups/umcg-bios/prm02/projects/HRC_imputation/LL/results/original_zips
 
-**TODO**: Don't know the exact imputation settings yet.
+**Note**:
+1. LL are zipped archives.
+2. Don't know the exact imputation settings yet.
 
 ### Path to RNA-seq files (Calculon / Gearshift?)
+The FASTQ files are not on Gearshift yet (2021 Feb 10)
 The RNA-seq FASTQ files could be found: `/groups/umcg-bios/prm02/rawdata/rnaseq`
 
 ### After matching genotype ids to RNA-seq ids

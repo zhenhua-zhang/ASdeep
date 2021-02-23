@@ -2,29 +2,18 @@
 # -*- coding: utf-8 -*-
 
 # File name : zutils.py
-# Author    : Zhenhua Zhang
-# E-mail    : zhenhua.zhang217@gmail.com
-# Created   : Mon 22 Jun 2020 11:25:03 AM CEST
-# Version   : v0.1.0
-# License   : MIT
+# Author        : Zhenhua Zhang
+# E-mail        : zhenhua.zhang217@gmail.com
+# Created     : Mon 22 Jun 2020 11:25:03 AM CEST
+# Version     : v0.1.0
+# License     : MIT
 #
 
 import sys
 import copy
-import logging
+import numpy as np
 
 from collections import UserDict
-
-logger = logging.getLogger()
-fmt_str = "| {levelname: ^8} | {asctime} | {name}: {message}"
-dt_str = "%Y-%m-%d %H:%M:%S %p"
-fmt = logging.Formatter(fmt_str, datefmt=dt_str, style="{")
-cs_handle = logging.StreamHandler()
-cs_handle.setLevel(logging.INFO)
-cs_handle.setFormatter(fmt)
-logger.addHandler(cs_handle)
-logger.setLevel(logging.INFO)
-
 
 # Reference: https://genomevolution.org/wiki/index.php/Ambiguous_nucleotide
 # M2B = { # monoallelic base-pair to biallelic base.
@@ -148,8 +137,8 @@ def insert_or_append(dict1, dictlike2):
     return dict1
 
 # def split_train_test(dataset: tf.data.Dataset, test_prop: float = 0.3,
-#                      shuffle: bool = True, shuf_buf_size: int = 32,
-#                      batch_size: int = 16) -> (tf.data.Dataset, tf.data.Dataset):
+#         shuffle: bool = True, shuf_buf_size: int = 32,
+#         batch_size: int = 16) -> (tf.data.Dataset, tf.data.Dataset):
 #     """Split a dataset into train and test dataset.
 # 
 #     Source: https://stackoverflow.com/questions/51125266/how-do-i-split-tensorflow-datasets
@@ -184,9 +173,75 @@ def make_gif(fp_in, fp_out, duration=400, loop=0):
         fp_in_imgs = glob.glob(fp_in)
         img, *imgs = [Image.open(f) for f in sorted(fp_in_imgs)]
         img.save(fp=fp_out, format="GIF", append_images=imgs, save_all=True,
-                 duration=duration, loop=loop)
+                duration=duration, loop=loop)
     except ValueError as err:
         print(err)
 
 
+# this code is copied from statsmodel source code, to avoid installation of statsmodel for computing fdr-corrected p-values
+# link: http://statsmodels.sourceforge.net/ipdirective/_modules/scikits/statsmodels/sandbox/stats/multicomp.html
 
+def ecdf(x):
+    '''no frills empirical cdf used in fdrcorrection
+    '''
+    nobs = len(x)
+    return np.arange(1,nobs+1)/float(nobs)
+
+def fdrcorrection(pvals, alpha, method='indep'):
+
+    '''pvalue correction for false discovery rate
+    This covers Benjamini/Hochberg for independent or positively correlated and
+    Benjamini/Yekutieli for general or negatively correlated tests. Both are
+    available in the function multipletests, as method=`fdr_bh`, resp. `fdr_by`.
+    Parameters
+    ----------
+    pvals : array_like
+        set of p-values of the individual tests.
+    alpha : float
+        error rate
+    method : {'indep', 'negcorr')
+    Returns
+    -------
+    rejected : array, bool
+        True if a hypothesis is rejected, False if not
+    pvalue-corrected : array
+        pvalues adjusted for multiple hypothesis testing to limit FDR
+    Notes
+    -----
+    If there is prior information on the fraction of true hypothesis, then alpha
+    should be set to alpha * m/m_0 where m is the number of tests,
+    given by the p-values, and m_0 is an estimate of the true hypothesis.
+    (see Benjamini, Krieger and Yekuteli)
+    The two-step method of Benjamini, Krieger and Yekutiel that estimates the number
+    of false hypotheses will be available (soon).
+    Method names can be abbreviated to first letter, 'i' or 'p' for fdr_bh and 'n' for
+    fdr_by.
+    '''
+    pvals = np.asarray(pvals)
+
+    pvals_sortind = np.argsort(pvals)
+    pvals_sorted = pvals[pvals_sortind]
+    sortrevind = pvals_sortind.argsort()
+
+    if method in ['i', 'indep', 'p', 'poscorr']:
+        ecdffactor = ecdf(pvals_sorted)
+    elif method in ['n', 'negcorr']:
+        cm = np.sum(1./np.arange(1, len(pvals_sorted)+1))   #corrected this
+        ecdffactor = ecdf(pvals_sorted) / cm
+    elif method in ['n', 'negcorr']:
+        cm = np.sum(np.arange(len(pvals)))
+        ecdffactor = ecdf(pvals_sorted)/cm
+    else:
+        raise ValueError('only indep and necorr implemented')
+
+    reject = pvals_sorted < ecdffactor*alpha
+    if reject.any():
+        rejectmax = max(np.nonzero(reject)[0])
+    else:
+        rejectmax = 0
+    reject[:rejectmax] = True
+
+    pvals_corrected_raw = pvals_sorted / ecdffactor
+    pvals_corrected = np.minimum.accumulate(pvals_corrected_raw[::-1])[::-1]
+    pvals_corrected[pvals_corrected>1] = 1
+    return reject[sortrevind], pvals_corrected[sortrevind]

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# File name : ASEDataset.py
-# Author    : Zhenhua Zhang
-# E-mail    : zhenhua.zhang217@gmail.com
-# Created   : Mon 22 Jun 2020 11:16:49 AM CEST
-# Version   : v 0.1.0
-# License   : MIT
+# File name   : ASEDataset.py
+# Author      : Zhenhua Zhang
+# E-mail      : zhenhua.zhang217@gmail.com
+# Created     : Mon 22 Jun 2020 11:16:49 AM CEST
+# Version     : v 0.1.0
+# License     : MIT
 #
 """A module to load and pre-process sequence matrix."""
 
@@ -14,23 +14,21 @@ import gzip
 import math
 import logging
 
-import numpy as np
-
 from Bio import SeqIO
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from zutils import logger
 from HelbertCurve import HelbertCurve
 
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{', level=logging.INFO)
 
 class MultipleTestAdjustMent(object):
     """Adjust p-values for multiple tests.
 
     This class is a dataset-wide transformer.
     """
-    def __init__(self, alpha=0.05, method="fdr_bh"):
-        self.alpha = 0.05
+    def __init__(self, alpha: float=0.05, method: str="fdr_bh"):
+        self.alpha = alpha
         self.method = method
 
     def __call__(self, dataset: list):
@@ -105,8 +103,8 @@ class ASEDataset(Dataset):
                  dataset_trans=None):
         """
         Args:
-            gene_id   (string): Gene ID (Ensembl gene ID) to train on.
-            file_path_pool  (string): Pattern to find the numpy file.
+            gene_id (string): Gene ID (Ensembl gene ID) to train on.
+            file_path_pool (string): Pattern to find the numpy file.
             element_trans (callable, optional): Optional transfrom to be applied
                 on a sample.
             dataset_trans (callable, optional): Optional transform to be applied
@@ -147,11 +145,12 @@ class ASEDataset(Dataset):
 
             with _open(file_path, mode=_mode) as ipfh:
                 record = SeqIO.to_dict(SeqIO.parse(ipfh, "fasta"),
-                                   key_function=lambda x: x.id.split("|")[1]) \
-                        .get(self.gene_id, None)
+                        key_function=lambda x: x.id.split("|")[1]) \
+                                .get(self.gene_id, None)
 
             if record is None:
-                logger.error("No '{}' in '{}'".format(self.gene_id, file_path))
+                _err_msg = "No '{}' in '{}'".format(self.gene_id, file_path)
+                logging.warning(_err_msg)
                 temp_list.append([None, None])
             else:
                 p_val, label = record.name.split("|")[2:4]
@@ -162,7 +161,7 @@ class ASEDataset(Dataset):
 
         return tuple(temp_list)
 
-    def _items(self, idx, labels=True):
+    def _items(self, idx=None, labels=True):
         pos = 1 if labels else 0
         if idx is None:
             for idx in range(len(self)):

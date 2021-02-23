@@ -1,7 +1,9 @@
 #!/bin/bash
 # ASE analysis pipeline by fastp, STAR, WASP, and SAMtools
 
+[[ -f ./WaspPipelineUtils.sh ]] && source ./WaspPipelineUtils.sh || exit -1
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+
 set -E -o pipefail
 
 #
@@ -10,189 +12,44 @@ set -E -o pipefail
 # 1. For one sample with paired-end results about 2G in total, the intermediate
 # files could go up to 30G. Please make sure you have enough space on the devices.
 
-# Setup working directories for current project.
-cat >/dev/null << EOF
-How the working tree looks like
-WORKDIR/
-├── [genomeDir/]
-├── [snpH5db/]
-├── [fastaH5db/]
-├── optDir/
-│   └── FASTQID/
-│       ├── fastpOptDir/
-│       ├── starOptDir/
-│       └── waspOptDir/
-└── tmpDir
-    └── FASTQID
-        ├── fastpTmpDir/
-        ├── starTmpDir/
-        └── waspTmpDir/
-            ├── perChrom/
-            └── starMapping/
-EOF
+#
+## Working directory tree
+#
+# WORKDIR/
+# ├── [genomeDir/]
+# ├── [snpH5db/]
+# ├── optDir/
+# │   └── FASTQID/
+# │       ├── fastpOptDir/
+# │       ├── starOptDir/
+# │       ├── waspOptDir/
+# │       ├── gatkOptDir/
+# │       └── rasqualOptDir/
+# └── tmpDir
+#     └── FASTQID/
+#         ├── fastpTmpDir/
+#         ├── starTmpDir/
+#         ├── waspTmpDir/
+#         │   └── starMapping/
+#         ├── gatkTmpDir/
+#         └── rasqualTmpDir/
 
-cat >/dev/null <<EOF
-WASP (v0.3.4) dependencies:
-Python 3.6.3
-numexpr 2.7.1
-numpy 1.19.4
-pysam 0.16.0.1
-scipy 1.5.4
-tables 3.6.1
-EOF
+#
+## WASP (v0.3.4) dependencies:
+#
+# Python 3.6.3
+# Python packages:
+#     numexpr 2.7.1
+#     numpy 1.19.4
+#     pysam 0.16.0.1
+#     scipy 1.5.4
+#     tables 3.6.1
 
-# ENVs {
-export ASEPL_VERSION
-ASEPL_VERSION="0.1.0"
-ASEPL_FILENAME=$(basename "$0")
-# } // ENVs
-
-
-# Text color and format {
-if [[ -x /usr/bin/tput ]] && tput setaf 1 &> /dev/null; then
-    tput sgr0
-    fmtBold=$(tput bold)
-    fmtReset=$(tput sgr0)
-    fmtItalic=$(tput sitm)
-
-    fmtRed=$(tput setaf 1)
-    fmtBlue=$(tput setaf 4)
-    fmtCyan=$(tput setaf 6)
-    fmtGrey=$(tput setaf 8)
-    fmtBlack=$(tput setaf 0)
-    fmtGreen=$(tput setaf 2)
-    fmtWhite=$(tput setaf 7)
-    fmtYellow=$(tput setaf 3)
-    fmtPurple=$(tput setaf 5)
-else
-    fmtBold="\e[1m"
-    fmtReset="\e[0m"
-    fmtItalic="\e[3m"
-
-    fmtRed="\e[1;31m"
-    fmtBlue="\e[1;34m"
-    fmtCyan="\e[1;36m"
-    fmtGrey="\e[1;37m"
-    fmtBlack="\e[1;30m"
-    fmtGreen="\e[1;32m"
-    fmtWhite="\e[1;37m"
-    fmtYellow="\e[1;33m"
-    fmtPurple="\e[1;35m"
-fi
-# } // Text color and format
-
-# Error information, exit -1
-echoErro() {
-    echo -e "$fmtBold$fmtRed[E]: $1$fmtReset" >&2 && exit -1
-}
-
-# Warning information
-echoWarn() {
-    echo -e "$fmtBold$fmtYellow[W]:$fmtReset $*" >&2
-}
-
-# General information
-echoInfo() {
-    echo -e "$fmtBold$fmtWhite[I]:$fmtReset $*"
-}
-
-echoVersion() {
-    cat << EOF
-
-$ASEPL_FILENAME, Version ${ASEPL_VERSION:=UNKNOWN}
-
-EOF
-}
-
-echoHelp() {
-    cat <<EOF
-
-$ASEPL_FILENAME, Version ${ASEPL_VERSION:=UNKNOWN}
-
-It is recommended to use the a configuration file instead of commandline
-arguments and flags. Please check the \`./config\` file for more information.
-
-Help:
-  -c|--config    Optional.
-      The confituration file to supply values for the variables
-  -w|--workDir    Required.
-      The working directory.
-  -i|--fastqId    Required.
-      The FASTQ files id.
-  -p|--fastqDir    Required.
-      The directory to the FASTQ files.
-  -g|--genomeDir    Required.
-      The path to the genome index.
-  --genomeFastaFile    Required.
-      The path to the FASTA file of genome file.
-  --genomeAnnotationFile    Required.
-      The path to the gene feature file.
-  --snpH5dbPath    Required.
-      The path to the HDF5 database for variants
-  --snp2h5Exe    Optional.
-      The path to the executable snp2h5 by WASP pipeline.
-  --vcfFileDir    Optional
-      The path to the variant call format (VCF) file holding variants information.
-  --chromInfoFile    Required.
-      The file holding chromosome information.
-  --fastaH5dbPath    Optional
-      The path to the HDF5 database for geome sequence
-  --fasta2h5Exe   Optional
-      The path to the executable fasta2h5 by WASP pipeline.
-  --waspDir  Required.
-      The path to the WASP tool.
-  --pyEnv  Required.
-      The path to the python virtual enviroment.
-  --sampleIdFile
-      The path to file holding sample ID.
-  -h|--help    Optional. Action: print_info
-    Print this help context and exit.
-  -V|--version    Optional. Action: store_true
-    Print version of current script and exit.
-
-More information please contact Zhenhua Zhang <zhenhua.zhang217@gmail.com>
-
-EOF
-}
-
-lopt="config:,workDir:,fastqId:,fastqDir:,fastqPrefix:,fastqSuffix:,fastpExe:,"
-lopt=$lopt"genomeDir:,genomeFastaFile:,genomeAnnotationFile:,snpH5dbPath:,"
-lopt=$lopt"snp2h5Exe:,vcfFileDir:,vcfFilePrefix:,vcfFileSuffix:,chromInfoFile:,"
-lopt=$lopt"fastaH5dbPath:,fasta2h5Exe:,waspDir:,pyEnv:,sampleIdFile:,help,version"
-opt=$(getopt -l $lopt -- "c:w:i:p:g:hv" "$@")
+opt=$(getopt -o "c:hv" -l "conf:,help,version" -- "$@")
 eval set -- $opt
 while true; do
     case $1 in
-        -c|--config) shift && config=$1 && break ;;
-        -w|--workDir) shift && workDir=$1 ;;
-
-        -i|--fastqId) shift && fastqId=$1 ;;
-        -p|--fastqDir) shift && fastqDir=$1 ;;
-        --fastqPrefix) shift && fastqPrefix=$1 ;;
-        --fastqSuffix) shift && fastqSuffix=$1 ;;
-
-        --fastpExe) shift && fastpExe=$1 ;;
-
-        -g|--genomeDir) shift && genomeDir=$1 ;;
-        --chromInfoFile) shift && chromInfoFile=$1 ;;
-        --genomeFastaFile) shift && genomeFastaFile=$1;;
-        --genomeAnnotationFile) shift && genomeAnnotationFile=$1 ;;
-
-        --snpH5dbPath) shift && snpH5dbPath=$1 ;;
-        --snp2h5Exe) shift && snp2h5Exe=$1 ;;
-
-        --vcfFileDir) shift && vcfFileDir=$1 ;;
-        --vcfFilePrefix) shift && vcfFilePrefix=$1 ;;
-        --vcfFileSuffix) shift && vcfFileSuffix=$1 ;;
-
-        --fastaH5dbPath) shift && fastaH5dbPath=$1 ;;
-        --fasta2h5Exe) shift && fasta2h5Exe=$1 ;;
-
-        --waspDir) shift && waspDir=$1 ;;
-        --pyEnv) shift && pyEnv=$1 ;;
-
-        --sampleIdFile) shift && sampleIdFile=$1 ;;
-
+        -c|--conf) shift && config=$1 && break ;;
         -h|--help) echoHelp && exit 0 ;;
         -v|--version) echoVersion && exit 0 ;;
         --) shift && break ;;
@@ -200,76 +57,186 @@ while true; do
     shift
 done
 
-# Check config file, otherwise use CLI options instead. {
-if [ "xxx"$config == "xxx" ]; then
-    workDir=${workDir:?-w/--workDir is required}
-    fastqId=${fastqId:?-i/--fastqId is required}
-    fastqDir=${fastqDir:?-p/--fastqDir is required}
+[[ -f ${config:?-c/--conf is required} ]] \
+    && source $config || echoErro "Not found $config to read"
 
-    if [ $genomeDir"xxx" == "xxx" ]; then
-        if [ $genomeFastaFile"xxx" == "xxx" ]; then
-            echoErro "Either -g/--genomeDir or -f/--genomeFastaFile should be given!"
-        fi
+projDir=/groups/umcg-bios/tmp01/users/umcg-zzhang/projects/wp_ase_dlp
 
-        # Setup the path of STAR genome index
-        genomeDir=${genomeDir:=$workDir/genomeDir}
-    else
-        if [ $genomeFastaFile"xxx" != "xxx" ]; then
-            echoErro "Either -g/--genomeDir or -f/--genomeFastaFile should be given, but not both!"
-        fi
-    fi
-    fastpExe=${fastpExe:=~/tools/bin/fastp}
-    fastqPrefix=${fastqPrefix:="/"}
-    fastqSuffix=${fastqSuffix:=.fq.gz}
+workDir=$projDir/outputs/aseQuan
+cohortId=CODAM
 
-    snp2h5Exe=${snp2h5Exe:=snp2h5}
-    fasta2h5Exe=${fasta2h5Exe:=fasta2h5}
+logDir=$workDir/logDir 
 
-    vcfFilePrefix=${vcfFilePrefix:=gonl.chr}
-    vcfFileSuffix=${vcfFileSuffix:=.snps_indels.r5.3.vcf.gz}
-else
-    if [ -f $config ]; then
-        source $config
-    else
-        echoErro "Not found $config to read"
-    fi
-fi
-# } // Check config file, otherwise use CLI options instead.
+tmpDir=$workDir/tmpDir
+fastpTmpDir=$tmpDir/$fastqId/fastpTmpDir
+starTmpDir=$tmpDir/$fastqId/starTmpDir
+waspTmpDir=$tmpDir/$fastqId/waspTmpDir
+gatkTmpDir=$tmpDir/$fastqId/gatkTmpDir
+rasqualTmpDir=$tmpDir/$fastqId/rasqualTmpDir
 
-mkdir -p $workDir/logDir \
-    $workDir/tmpDir/$fastqId/{fastp,star,wasp}TmpDir \
-    $workDir/optDir/$fastqId/{fastp,star,wasp}OptDir \
+optDir=$workDir/$cohortId/optDir
+fastpOptDir=$OptDir/$fastqId/fastpOptDir
+starOptDir=$OptDir/$fastqId/starOptDir
+waspOptDir=$OptDir/$fastqId/waspOptDir
+gatkOptDir=$OptDir/$fastqId/gatkOptDir
+rasqualOptDir=$OptDir/$fastqId/rasqualOptDir
+
+genomeDir=$workDir/genomeDir
+genomeFastaFile=
+genomeAnnotationFile=
+
+vcfFile=$projDir/outputs/phasing/all-CODAM-singleAlt.vcf.gz
+chromInfoFile=$projDir/inputs/Ensembl_references/human_g1k_v37_chrom_info.txt
+
+fastqId=AD10W1ACXX-1-11
+fastqDir=$workDir/tmpDir
+fastqPrefix=
+fastqSuffix=.fq.gz
+
+sampleIdFile=$projDir/inputs/idmapping/GTE_BIOS_empirical_match_30-03-2016_usable_GTE_with_NTR.txt
+sampleId=$(grep -w $fastqId $sampleIdFile | cut -f2)
 
 afterok="--dependency=afterok"  # NOTE: the colon after the afterok is maully added
+
+mkdir -p $logDir \
+    $tmpDir/$fastqId/{fastp,star,wasp,gatk,rasqual}TmpDir \
+    $optDir/$fastqId/{fastp,star,wasp,gatk,rasqual}OptDir \
+
+#
+## STAR: Generate STAR genome index {
+#
+stepName=STARBuildGenomeIndex
+if [ -d $genomeDir ]; then
+    echoWarn "Found $genomeDir, skip $stepName"
+else
+    [[ $genomeFastaFile"xxx" == "xxx" ]] \
+        && echoErro "No genome index found, please give genome fasta file"
+
+    [[ $genomeAnnotationFile"xxx" == "xxx" ]] \
+        && echoErro "No genome index found, please give genome annotation file"
+
+    mkdir -p $workDir/genomeDir
+
+    mem=150G
+    cpus=15
+    time=0:59:00
+    STARGenomeIndexJobId=$(sbatch \
+        --mem=$mem \
+        --time=$time \
+        --cpus-per-task=$cpus \
+        --job-name=$stepName \
+        --output=$workDir/logDir/%j-$stepName.log \
+        <<EOF | cut -d' ' -f4
+#!/bin/bash
+set -Ee -o pipefail
+[[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+
+module load STAR/2.6.1c-foss-2018b
+module list
+
+STAR \
+    --runMode genomeGenerate \
+    --genomeDir $genomeDir \
+    --genomeFastaFiles $genomeFastaFile \
+    --sjdbGTFfile $genomeAnnotationFile \
+    --runThreadN $cpus \
+    --outFileNamePrefix $genomeDir/starGenomeIndex
+EOF
+)
+    echoInfo "$stepName was submitted: $STARGenomeIndexJobId ..."
+fi
+# } // STAR: Generate STAR genome index
+
+
+#
+## WASP: Generate SNP HDF5 database for WASP {
+#
+stepName=WaspCreateSnpHdf5Database
+if [ -d $snpH5dbPath ]; then
+    echoWarn "Found $snpH5dbPath, skip $stepName"
+else
+    mem=5G
+    cpus=1
+    time=0:19:00
+
+    # snpH5dbPath=$workDir/snpH5db
+    WaspCreateSnpHdf5DatabaseJobId=$(sbatch \
+        --mem=$mem \
+        --time=$time \
+        --cpus-per-task=$cpus \
+        --job-name=$stepName \
+        --output=$logDir/%j-%u-$stepName.log \
+        <<EOF | cut -f4 -d ' '
+#!/bin/bash
+set -Ee -o pipefail
+[[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+
+mkdir -p $snpH5dbPath
+mkdir -p $tmpDir/snpH5dbTmpDir
+
+# Split the VCF by chromosome
+module load BCFtools
+module list
+for chr in {1..22}; do
+    bcftools view \
+        -O z
+        -o $tmpDir/snpH5dbTmpDir/${vcfFile/.vcf.gz/-chr${chr}.vcf.gz} \
+        $vcfFile ${chr}
+done
+
+# Generate SNP HDF5 database
+module load HDF5/1.8.14-foss-2018b
+module list
+
+~/tools/bin/snp2h5 \
+	--chrom $chromInfoFile \
+	--format vcf \
+	--snp_tab $snpH5dbPath/snps_tab.h5 \
+	--snp_index $snpH5dbPath/snps_index.h5 \
+	--haplotype $snpH5dbPath/haplotype.h5 \
+    $tmpDir/snpH5dbTmpDir/${vcfFile/.vcf.gz/}-chr*.vcf.gz
+
+# rm -fr $tmpDir/snpH5dbTmpDir
+EOF
+)
+    echoInfo "$stepName was submitted: $WaspCreateSnpHdf5DatabaseJobId ..."
+fi
+# } // Generate SNP HDF5 database for WASP
+
 
 #
 ## FASTP: Preprocessing fastq files. {
 #
+dependency=$afterok:$STARMappingJobId:$WaspCreateSnpHdf5DatabaseJobId
+if [[ $dependency == "--afterok::" ]]; then dependency=""; fi
+
 stepName=FastpPreproc
 mem=5G
-cpus=5  # Current only for paired-end FASTQs. It can only use up to 16 CPUs.
+cpus=5
 time=0:19:00
 
-fastqFileR1=$fastqDir/$fastqPrefix$fastqId"_R1"$fastqSuffix
-fastqFileR2=$fastqDir/$fastqPrefix$fastqId"_R2"$fastqSuffix
-fastpTmpDir=$workDir/tmpDir/$fastqId/fastpTmpDir
-
-fastpPreprocJobId=$(sbatch --time=$time --cpus-per-task=$cpus --mem=$mem \
-    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+fastpPreprocJobId=$(sbatch $dependency \
+    --mem=$mem \
+    --time=$time \
+    --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
+    --output=$logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
 set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
-module load GCC/7.3.0-2.30
 
-$fastpExe \
-    --in1 $fastqFileR1 \
-    --in2 $fastqFileR2 \
-    --out1 $fastpTmpDir/${fastqId}_R1_paired.fq.gz \
-    --out2 $fastpTmpDir/${fastqId}_R2_paired.fq.gz \
-    --unpaired1 $fastpTmpDir/${fastqId}_R1_unpaired.fq.gz \
-    --unpaired2 $fastpTmpDir/${fastqId}_R2_unpaired.fq.gz  \
+module load GCC/7.3.0-2.30 # fastp was compiled using GCC v7.3.0
+module list
+
+# add a CLI option to fastq files
+~/tools/bin/fastp \
+    --in1 $fastqDir/$fastqPrefix$fastqId"_R1"$fastqSuffix \
+    --in2 $fastqDir/$fastqPrefix$fastqId"_R2"$fastqSuffix \
+    --out1 $fastpTmpDir/${fastqId}_paired_R1.fq.gz \
+    --out2 $fastpTmpDir/${fastqId}_paired_R2.fq.gz \
+    --unpaired1 $fastpTmpDir/${fastqId}_unpaired_R1.fq.gz \
+    --unpaired2 $fastpTmpDir/${fastqId}_unpaired_R2.fq.gz  \
     --failed_out $fastpTmpDir/${fastqId}_failed.fq.gz \
     --html $fastpTmpDir/${fastqId}_report.html \
     --json $fastpTmpDir/${fastqId}_report.json \
@@ -280,228 +247,95 @@ $fastpExe \
     --cut_tail \
     --correction \
     --trim_poly_g \
-    --trim_poly_x \
-    --dont_overwrite
+    --trim_poly_x
 EOF
 )
 echoInfo $stepName was submitted: $fastpPreprocJobId ...
 # } // FASTP: Preprocessing fastq files.
 
-#
-## STAR: Generate STAR genome index {
-#
-# TODO: Conflicts between CLI options. If genomeDir is given, genomeFastaFile is not mandatory
-# Create STAR genome index. It requires at least 120G memory and 1.5 hours when using 15 cores.
-# The index was made on human genome build 37, using transcript annotations (V75) downloaded from
-# Ensembl. The genome index should be constructed with annotations.
-if [ -d $genomeDir ]; then
-    echoWarn "Found $genomeDir, supposing it as a legal STAR genome index, skip STARGenomeIndex"
-    dependency=$afterok:$fastpPreprocJobId
-else
-    [[ $genomeFastaFile"xxx" == "xxx" ]] \
-        && echoErro "No genome index found, please specify genome fasta file to create the genome index"
-
-    [[ $genomeAnnotationFile"xxx" == "xxx" ]] \
-        && echoErro "No genome index found, please specify genome annotation file to create the genome index"
-
-    mkdir -p $workDir/genomeDir
-
-    stepName=STARBuildGenomeIndex
-    mem=150G
-    cpus=15
-    time=0:59:00
-
-    genomeIndexPrefix=${genomeIndexPrefix:=STARGenomeIndex}
-    STARGenomeIndexJobId=$(sbatch --time=$time --cpus-per-task=$cpus --mem=$mem \
-        --output=$workDir/logDir/%j-$stepName.log \
-        --job-name=$stepName \
-        <<EOF | cut -d' ' -f4
-#!/bin/bash
-set -Ee --o pipefail
-[[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
-
-module purge && module load STAR/2.6.1c-foss-2018b && module list
-
-STAR --runMode genomeGenerate \
-  --genomeDir $genomeDir \
-  --genomeFastaFiles $genomeFastaFile \
-  --sjdbGTFfile $genomeAnnotationFile \
-  --runThreadN $cpus \
-  --outFileNamePrefix $genomeIndexPrefix
-EOF
-)
-    echoInfo "$stepName was submitted: $STARGenomeIndexJobId ..."
-    dependency=$afterok:$fastpPreprocJobId:$STARGenomeIndexJobId
-fi
-# } // STAR: Generate STAR genome index
 
 #
 ## STAR: Mapping reads to genome {
 #
+dependency=$afterok:$fastpPreprocJobId
 stepName=STARMapping
 mem=50G  # For human genome, it requires at least 40G memory.
-cpus=15
-time=0:25:00
+cpus=5
+time=0:45:00
 
-readFilesInR1=$fastpTmpDir/${fastqId}_R1_paired.fq.gz
-readFilesInR2=$fastpTmpDir/${fastqId}_R2_paired.fq.gz
-outSAMattrRGline="ID:$fastqId SM:$fastqId PL:ILLUMINA"
-
-STARMappingJobId=$(sbatch $dependency --time=$time --cpus-per-task=$cpus --mem=$mem \
-    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+STARMappingJobId=$(sbatch $dependency \
+    --mem=$mem \
+    --time=$time \
+    --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
+    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
 set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 
-mappingOutPrefix=$workDir/tmpDir/$fastqId/starTmpDir/$fastqId
-module purge && module load STAR/2.6.1c-foss-2018b && module list
+# Mapping
+module load STAR/2.6.1c-foss-2018b
+module list
+
 STAR --runMode alignReads \
     --genomeDir $genomeDir \
     --runThreadN $cpus \
-    --readFilesIn $readFilesInR1 $readFilesInR2 \
+    --readFilesIn $fastpTmpDir/${fastqId}_R{1,2}_paired.fq.gz \
     --readFilesCommand zcat \
     --outSAMtype BAM SortedByCoordinate \
-    --outSAMattrRGline $outSAMattrRGline \
+    --outSAMattrRGline "ID:$fastqId SM:$fastqId PL:ILLUMINA" \
     --twopassMode "Basic" \
-    --outFileNamePrefix \$mappingOutPrefix
+    --outFileNamePrefix $starTmpDir/$fastqId
 
-module purge && module load SAMtools/1.9-foss-2018b && module list
-samtools index -@ $cpus \$mappingOutPrefix*.bam
+# Index the output BAM file
+module load SAMtools/1.9-foss-2018b
+module list
+
+samtools index \
+    -@ $cpus \
+    $starTmpDir/$fastqId*.bam
 EOF
 )
 echoInfo "$stepName was submitted: $STARMappingJobId ..."
 # } // Mapping reads to genome 
 
-#
-## WASP: Generate SNP HDF5 database for WASP {
-#
-stepName=WaspCreateSnpHdf5Database
-if [ -d $snpH5dbPath ]; then
-    echoWarn "Found $snpH5dbPath, supposing it as a legal SNP HDF5 database, skip $stepName"
-    dependency=$afterok:$STARMappingJobId
-else
-    mem=5G
-    cpus=1
-    time=0:19:00
-
-    # snpH5dbPath=$workDir/snpH5db
-    WaspCreateSnpHdf5DatabaseJobId=$(sbatch --time=$time --cpus-per-task=$cpus --mem=$mem \
-        --array=1-22 \
-        --output=$workDir/logDir/%A_%a-$stepName.log \
-        --job-name=$stepName \
-        <<EOF | cut -f4 -d ' '
-#!/bin/bash
-set -Ee -o pipefail
-[[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
-
-module purge && module load HDF5/1.8.14-foss-2018b && module list
-
-chromId=\${SLURM_ARRAY_TASK_ID:=22}
-vcfFile=$vcfFileDir/$vcfFilePrefix\$chromId$vcfFileSuffix
-
-mkdir -p $snpH5dbPath/\$chromId
-$snp2h5Exe \
-	--chrom $chromInfoFile \
-	--format vcf \
-	--snp_tab $snpH5dbPath/\$chromId/snps_tab.h5 \
-	--snp_index $snpH5dbPath/\$chromId/snps_index.h5 \
-	--haplotype $snpH5dbPath/\$chromId/haplotype.h5 \
-	\$vcfFile
-EOF
-)
-    echoInfo "$stepName was submitted: $WaspCreateSnpHdf5DatabaseJobId ..."
-    dependency=$afterok:$STARMappingJobId:$WaspCreateSnpHdf5DatabaseJobId
-fi
-# } // Generate SNP HDF5 database for WASP
-
-#
-## WASP: Generage FASTA HDF5 database for WASP {
-#
-stepName=WaspCreateFastaHdf5Database
-if [ -d $fastaH5dbPath ]; then
-    echoWarn "Found $fastaH5dbPath, supposing it as a legal FASTA HDF5 database, skip $stepName"
-else
-    mem=5G
-    cpus=1
-    time=0:19:00
-    fastaH5dbPath=$workDir/fastaH5db
-
-    WaspCreateFastaHdf5DatabaseJobId=$(sbatch --time=$time --cpus-per-task=$cpus --mem=$mem \
-        --output=$workDir/logDir/%j-$stepName.log \
-        --job-name=$stepName \
-        <<EOF | cut -f4 -d' '
-#!/bin/bash
-set -Ee -o pipefail
-[[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
-
-module purge && module load HDF5/1.8.14-foss-2018b && module list
-
-mkdir -p $fastaH5dbPath \
-    && csplit -s -f $fastaH5dbPath/chr -b '%d' ${genomeFastaFile} '/>/' {22} \
-    && rm -f chr{0,23}
-
-for chr_file in $fastaH5dbPath/chr*; do
-    $fasta2h5Exe \
-        --chrom $chromInfoFile \
-        --seq \${chr_file}.h5 \
-        \${chr_file} \
-        && rm -f \${chr_file}
-done
-EOF
-)
-    echoInfo "$stepName was submitted: $WaspCreateFastaHdf5DatabaseJobId ..."
-fi
-# } // Generage FASTA HDF5 database for WASP
-
 
 #
 ## WASP: Find intersected SNPs {
 #
+dependency=$afterok:$STARMappingJobId
 stepName=WaspRMBFindIntersectedSnps
 mem=8G
 cpus=1
-time=0:19:00
+time=0:49:00
 
 WaspRMBFindIntersectedSnpsJobId=$(sbatch $dependency \
-    --time=$time --mem=$mem --cpus-per-task=$cpus \
-    --ntasks=1 --array=1-22 \
-    --output=$workDir/logDir/%A_%a-$fastqId-$stepName.log \
+    --mem=$mem \
+    --time=$time \
+    --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
+    --output=$logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
 set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 
-chromId=\${SLURM_ARRAY_TASK_ID:=22}
+module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+module list
 
-# Split a huge BAM file by chromosome.
-module purge && module load SAMtools/1.9-foss-2018b && module list
-
-perChromDir=$workDir/tmpDir/$fastqId/waspTmpDir/perChrom
-mkdir -p \$perChromDir/\$chromId
-
-samtools view -hb \
-    -o \$perChromDir/\$chromId/${fastqId}_\$chromId.bam \
-    $workDir/tmpDir/$fastqId/starTmpDir/*.bam \
-    \$chromId
-samtools index \$perChromDir/\$chromId/${fastqId}_\$chromId.bam
-
-# Find intersecting SNPs
-module purge && module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare && module list
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
 
-# find_intersecting_snps.py
+# Find intersecting SNPs
 python $waspDir/mapping/find_intersecting_snps.py \
-    --is_paired_end \
     --is_sorted \
-    --output_dir \$perChromDir/\$chromId \
-    --snp_tab $snpH5dbPath/\$chromId/snps_tab.h5 \
-    --snp_index $snpH5dbPath/\$chromId/snps_index.h5 \
-    --haplotype $snpH5dbPath/\$chromId/haplotype.h5 \
-    --samples $(grep -w $fastqId $sampleIdFile | cut -f2) \
-    \$perChromDir/\$chromId/${fastqId}_\$chromId.bam
+    --is_paired_end \
+    --output_dir $workDir/tmpDir/$fastqId/waspTmpDir \
+    --snp_tab $snpH5dbPath/snps_tab.h5 \
+    --snp_index $snpH5dbPath/snps_index.h5 \
+    --haplotype $snpH5dbPath/haplotype.h5 \
+    --samples $sampleId \
+    $workDir/tmpDir/$fastqId/starTmpDir/*.bam
 EOF
 )
 echoInfo "$stepName was submitted: $WaspRMBFindIntersectedSnpsJobId ..."
@@ -514,8 +348,8 @@ echoInfo "$stepName was submitted: $WaspRMBFindIntersectedSnpsJobId ..."
 dependency=$afterok:$WaspRMBFindIntersectedSnpsJobId
 stepName=WaspRMBRemapping
 mem=50G
-cpus=15
-time=0:19:00
+cpus=5
+time=0:29:00
 
 WaspRMBRemappingJobId=$(sbatch $dependency \
     --time=$time --mem=$mem --cpus-per-task=$cpus \
@@ -526,33 +360,30 @@ WaspRMBRemappingJobId=$(sbatch $dependency \
 set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 
-mkdir -p $workDir/tmpDir/$fastqId/waspTmpDir/starMapping
+module load STAR/2.6.1c-foss-2018b
+module list
 
-waspTmpDir=$workDir/tmpDir/$fastqId/waspTmpDir/perChrom
-readFilesIn_1=\$(ls -m \$waspTmpDir/**/*remap.fq1.gz | tr -d "\\n ")
-readFilesIn_2=\$(ls -m \$waspTmpDir/**/*remap.fq2.gz | tr -d "\\n ")
-
-outSAMattrRGline="ID:$fastqId SM:$fastqId PL:ILLUMINA"
-mappingOutPrefix=$workDir/tmpDir/$fastqId/waspTmpDir/starMapping/waspStarRemap
-
-module purge && module load STAR/2.6.1c-foss-2018b && module list
-STAR --runMode alignReads \
+STAR \
+    --runMode alignReads \
     --genomeDir $genomeDir \
     --runThreadN $cpus \
-    --readFilesIn \$readFilesIn_1 \$readFilesIn_2 \
+    --readFilesIn $waspTmpDir/*remap.fq1.gz $waspTmpDir/*remap.fq2.gz \
     --readFilesCommand zcat \
     --outSAMtype BAM SortedByCoordinate \
-    --outSAMattrRGline \$outSAMattrRGline \
+    --outSAMattrRGline "ID:$fastqId SM:$fastqId PL:ILLUMINA" \
     --twopassMode "Basic" \
-    --outFileNamePrefix \$mappingOutPrefix
+    --outFileNamePrefix $waspTmpDir/$fastqId.remap
 
 # Create index files for BAMs
-module purge && module load SAMtools/1.9-foss-2018b && module list
-samtools index -@ $cpus \$mappingOutPrefix*.bam
+module load SAMtools/1.9-foss-2018b
+module list
+
+samtools index -@ $cpus $waspTmpDir/$fastqId.remap*.bam
 EOF
 )
 echoInfo "$stepName was submitted: $WaspRMBRemappingJobId ..."
 # } // STAR: Remapping by STAR for WASP
+
 
 #
 ## WASP: RMB filtering and removing duplication {
@@ -561,118 +392,169 @@ dependency=$afterok:$WaspRMBRemappingJobId
 stepName=WaspRMBFilterAndRmDup
 mem=10G
 cpus=1
-time=0:19:00
+time=0:39:00
 
 waspDir=${waspDir:=~/tools/WASP}
 WaspRMBFilterAndRmDupJobId=$(sbatch $dependency \
-    --time=$time --mem=$mem --cpus-per-task=$cpus --ntasks=1 --array=1-22 \
-    --output=$workDir/logDir/%A_%a-$fastqId-$stepName.log \
+    --mem=$mem 
+    --time=$time 
+    --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
+    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
 set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
-
-chromId=\${SLURM_ARRAY_TASK_ID:=22}
-perChromDir=$workDir/tmpDir/$fastqId/waspTmpDir/perChrom
-
-# Split a huge BAM file by chromosome.
-module purge && module load SAMtools/1.9-foss-2018b && module list
-samtools view -hb \
-    -o \$perChromDir/\$chromId/${fastqId}_\${chromId}.remap.bam \
-    $workDir/tmpDir/$fastqId/waspTmpDir/starMapping/*.bam \
-    \$chromId
-
 # Find intersecting SNPs
-module purge && module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare && module list
+module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+module list
+
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
 
-## Conquer
-toRemapBAM=\$perChromDir/\$chromId/${fastqId}_\${chromId}.to.remap.bam
-remapBAM=\$perChromDir/\$chromId/${fastqId}_\${chromId}.remap.bam
-filterRemappedReadsPy=$waspDir/mapping/filter_remapped_reads.py
-remapKeptBam=\$perChromDir/\$chromId/${fastqId}_\${chromId}.remap.keep.bam
-python \$filterRemappedReadsPy \$toRemapBAM \$remapBAM \$remapKeptBam
+# TODO: 需要根据上一步输出，修改输入文件名
+python $waspDir/mapping/filter_remapped_reads.py \
+    $waspTmpDir/${fastqId}.to.remap.bam \
+    $waspTmpDir/${fastqId}.remap.bam \
+    $waspTmpDir/${fastqId}.remap.keep.bam
+    
 
-## Merge original and remapped BAM
-module purge && module load SAMtools/1.9-foss-2018b && module list
-keptBAM=\$perChromDir/\$chromId/${fastqId}_\$chromId.keep.bam
-keptMergedBAM=\$perChromDir/\$chromId/${fastqId}_\$chromId.keep.merged.bam
-keptMergedSortedBAM=\${keptMergedBAM/.bam/.sort.bam}
+# Merge original and remapped BAM
+module load SAMtools/1.9-foss-2018b
+module list
 
-samtools merge -f \$keptMergedBAM \$remapKeptBam \$keptBAM
-samtools sort -@ $cpus -o \$keptMergedSortedBAM \$keptMergedBAM
-samtools index -@ $cpus \$keptMergedSortedBAM
+samtools merge \
+    $waspTmpDir/${fastqId}.keep.merged.bam \
+    $waspTmpDir/${fastqId}.remap.keep.bam \
+    $waspTmpDir/${fastqId}.keep.bam
 
-# Remove duplicates
-rmdupPePy=$waspDir/mapping/rmdup_pe.py
-keptMergedSortedRmdupBam=\${keptMergedSortedBAM/.bam/.rmdup.bam}
+samtools sort \
+    -@ $cpus \
+    -o $waspTmpDir/${fastqId}.keep.merged.bam \
+    $waspTmpDir/${fastqId}.keep.merged.sorted.bam
 
-module purge && module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare && module list
+samtools index \
+    -@ $cpus \
+    $waspTmpDir/${fastqId}.keep.merged.sorted.bam
+
+
+# Remove duplications
+module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+module list
+
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
 
-python \$rmdupPePy \$keptMergedSortedBAM \$keptMergedSortedRmdupBam
+python $waspDir/mapping/rmdup_pe.py \
+    $waspTmpDir/${fastqId}.keep.merged.sorted.bam \
+    $waspTmpDir/${fastqId}.keep.merged.sorted.rmdup.bam
 
-# Sort and index BAM
-module purge && module load SAMtools/1.9-foss-2018b && module list
-
-keptMergedSortedRmdupSortBam=\${keptMergedSortedRmdupBam/.bam/.sort.bam}
-samtools sort -@ $cpus -o \$keptMergedSortedRmdupSortBam \$keptMergedSortedRmdupBam
-samtools index -@ $cpus \$keptMergedSortedRmdupSortBam
 
 # Get Allele-specific read counts
-module purge && module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare && module list
-if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
+module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+module list
 
-individual=$(grep -w $fastqId $sampleIdFile | cut -f2)
-refAlleleCountsFile=\$perChromDir/\$chromId/${fastqId}_\$chromId.refAlleleCounts.h5
-altAlleleCountsFile=\$perChromDir/\$chromId/${fastqId}_\$chromId.altAlleleCounts.h5
-otherAlleleCountsFile=\$perChromDir/\$chromId/${fastqId}_\$chromId.otherAlleleCounts.h5
-readsCounts=\$perChromDir/\$chromId/${fastqId}_\$chromId.allCounts.h5
-readsCountsInText=\$perChromDir/\$chromId/${fastqId}_\$chromId.readCountsInText.txt
+if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
 
 python $waspDir/CHT/bam2h5.py \
     --chrom $chromInfoFile \
-    --test_chrom \$chromId \
-    --snp_index $snpH5dbPath/\$chromId/snps_index.h5 \
-    --snp_tab $snpH5dbPath/\$chromId/snps_tab.h5 \
-    --haplotype $snpH5dbPath/\$chromId/haplotype.h5 \
-    --individual \$individual \
-    --ref_as_counts \$refAlleleCountsFile \
-    --alt_as_counts \$altAlleleCountsFile \
-    --other_as_counts \$otherAlleleCountsFile \
-    --read_counts \$readsCounts \
-    --txt_counts \$readsCountsInText \
-    \$keptMergedSortedRmdupSortBam
+    --individual $sampleId \
+    --snp_index $snpH5dbPath/snps_index.h5 \
+    --snp_tab $snpH5dbPath/snps_tab.h5 \
+    --haplotype $snpH5dbPath/haplotype.h5 \
+    --read_counts $waspTmpDir/${fastqId}.allAlleleReadCounts.h5 \
+    --txt_counts $waspTmpDir/${fastqId}.allAlleleReadCounts.txt \
+    --ref_as_counts $waspTmpDir/${fastqId}.refAlleleReadCounts.h5 \
+    --alt_as_counts $waspTmpDir/${fastqId}.altAlleleReadCounts.h5 \
+    --other_as_counts $waspTmpDir/${fastqId}.otherAlleleReadCounts.h5 \
+    $waspTmpDir/${fastqId}.keep.merged.sorted.rmdup.bam \
+    2> /dev/null
 EOF
 )
 
 echoInfo "$stepName was submitted: $WaspRMBFilterAndRmDupJobId ..."
 # } // WASP: RMB filtering and removing duplication
 
+
+#
+## GATK: ASEReadCounter counts reads allelicly {
+#
+dependency=$afterok:$WaspRMBFilterAndRmDupJobId
+stepName=GatkASEReaderCounter
+mem=25G
+cpus=1
+time=0:9:00
+
+GatkASEReaderCounterJobId=$(sbatch $dependency \
+    --mem=$mem \
+    --time=$time \
+    --cpus-per-task=$cpus \
+    --job-name=$fastqId-$stepName \
+    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    <<EOF | cut -d' ' -f4
+#!/bin/bash
+set -Ee -o pipefail
+[[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+
+module load GATK
+module list
+
+gatk ASEReadCounter \
+    --input xxx \
+    --variant xxx \
+    --reference xxx \
+    --output-format csv \
+    --output xxx
+EOF
+)
+# } // GATK: ASEReadCounter counts reads allelicly
+
+#
+## RASQUAL estimates ASE effects {
+#
+dependency=$afterok:$WaspRMBFilterAndRmDupJobId:$GatkASEReaderCounterJobId
+stepName=RasqualASEEstimation
+mem=25G
+cpus=1
+time=0:9:00
+
+RasqualASEEstimationJobId=$(sbatch $dependency \
+    --mem=$mem \
+    --time=$time \
+    --cpus-per-task=$cpus \
+    --job-name=$fastqId-$stepName \
+    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    <<EOF | cut -d' ' -f4
+#!/bin/bash
+set -Ee -o pipefail
+[[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+
+EOF
+# } // RASQUAL estimates ASE effects
+
 #
 ## Collect output and clean up {
 #
-dependency=$afterok:$WaspRMBFilterAndRmDupJobId
+dependency=$afterok:$GatkASEReaderCounterJobId:
 stepName=CollectOutputAndCleanup
 mem=4G
 cpus=1
 time=0:9:00
 
 CollectOutputAndCleanupJobId=$(sbatch $dependency \
-    --time=$time --mem=$mem --cpus-per-task=$cpus --ntasks=1 \
-    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    --mem=$mem \
+    --time=$time \
+    --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
+    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
 set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 
 # Compress all logfiles as some of them are large.
-gzip $workDir/logDir/*$fastqId-*.log
+gzip $logDir/*$fastqId-*.log
 
 # Copy fastp reports to output directory.
-cp -fr $workDir/tmpDir/$fastqId/fastpTmpDir/*.{html,json} $workDir/optDir/$fastqId/fastpOptDir
+cp -fr $fastpTmpDir/*.{html,json} $fastpOptDir
 
 # Copy WASP all counts per chromosome in HDF5 format.
 for chr in {1..22}; do
@@ -691,21 +573,23 @@ cat $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/*/*.readCountsInText.txt \
 # module purge && module load SAMtools/1.9-foss-2018b && module list
 # samtools merge -fcp -@ $cpus \
 #     $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.bam \
-#     $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/*/*.keep.merged.sort.rmdup.sort.bam
+#     $workDir/tmpDir/$fastqId/waspTmpDir/perChrom/*/*.keep.merged.sorted.rmdup.sorted.bam
 # 
-# samtools sort -@ $cpus \
-#     -o $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.sort.bam \
+# samtools sorted -@ $cpus \
+#     -o $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.sorted.bam \
 #     $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.bam
 # 
 # samtools index -@ $cpus \
-#     $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.sort.bam
+#     $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.sorted.bam
 # 
 # rm -fr $workDir/optDir/$fastqId/waspOptDir/$fastqId.keep.merge.rmdup.bam
 
-rm -fr $workDir/tmpDir/$fastqId
-rm -fr $workDir/tmpDir/$fastqId*.fq.gz
+# rm -fr $workDir/tmpDir/$fastqId
+# rm -fr $workDir/tmpDir/$fastqId"_"R{1,2}.fq.gz
 EOF
 )
 
 echoInfo "$stepName was submitted. Job id: $CollectOutputAndCleanupJobId ..."
 # } // Collect output and clean up
+
+# vim: set ai nowrap nospell ft=sh:
