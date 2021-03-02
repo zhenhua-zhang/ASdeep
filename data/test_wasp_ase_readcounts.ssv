@@ -1,0 +1,5 @@
+chrom pos ref alt gt ref_rc alt_rc oth_rc
+22 41 G A 0|0 2 6 0
+22 56 C T 1|0 9 18 0
+22 257 A T 0|1 5 2 0
+22 277 A G 0|1 10 2 0

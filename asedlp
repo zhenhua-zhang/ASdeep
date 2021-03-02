@@ -32,7 +32,8 @@ import argparse
 
 import numpy as np
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{', level=logging.INFO)
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
+                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 def get_args():
     '''Get CLI arguments.'''
@@ -97,13 +98,11 @@ def quant(args):
         logging.error("Import error: {}".format(ime))
         sys.exit(1)
     afactory = ASEFactory(args)
-    afactory.init() \
-            .gen_gnm_itvl() \
+    afactory.gen_gnm_itvl() \
             .gen_seq() \
             .gen_ase() \
             .save_ase_report() \
-            .save_train_set() \
-            .shutdown()
+            .save_train_set()
 
 
 def merge(args):

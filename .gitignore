@@ -1,7 +1,7 @@
 # Ignore all files and direcotories leading with underscore symbol
 **/test/
 
-archived/
+_archived/
 rnaseqpl/configs/
 
 **/*.npz
@@ -10,5 +10,3 @@ rnaseqpl/configs/
 .env/
 .idea/
 *.pyc
-asedlp/examples
-configs/bios/

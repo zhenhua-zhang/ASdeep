@@ -23,7 +23,8 @@ from torch.nn import functional as func
 
 from ASEDataset import ASEDataset, ReshapeMatrixAndPickupLabel, MultipleTestAdjustMent
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{', level=logging.INFO)
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
+                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 class CamFactory:
     def __init__(self, net=None, gene_id=None, file_path=None, feature_layer="layer4"):

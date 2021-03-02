@@ -9,12 +9,14 @@ import pdb
 import os
 import math
 import logging
+
 import pandas as pd
 import seaborn as sbn
 import gffutils as gut
 import matplotlib.pyplot as plt
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{', level=logging.INFO)
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
+                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 class ASEReport:
     """A class to process ASE report.
@@ -30,12 +32,6 @@ class ASEReport:
         self.genome_annot = kwargs.get("genome_annot", None)
         self.ant_db_name = None
         self.ant_sql = None
-
-    @staticmethod
-    def _pr_close_fig():
-        plt.cla()
-        plt.clf()
-        plt.close("all")
 
     def _pr_join_dtfm(self, **kwargs):
         """Merge multiple data frame of ASE quantification report.
@@ -81,13 +77,13 @@ class ASEReport:
                        .pivot(index="gene_id", columns="sample_id"))
 
             # Remove genes without herterozygous locus in `max_na_per_gene` individuals at maximum
-            pdb.set_trace()
-            pvm_raw = (pvm_raw.loc[pvm_raw.isna().sum(axis=1) < max_na_per_gene, :].fillna(1))
+            # pdb.set_trace()
+            pvm_by_coord = (pvm_raw.loc[pvm_raw.isna().sum(axis=1) < max_na_per_gene, :].fillna(1))
 
-            gene_coord = [self._pr_fetch_gene_coord(gene_id) for gene_id in pvm_raw.index]
+            gene_coord = [self._pr_fetch_gene_coord(gene_id) for gene_id in pvm_by_coord.index]
             gene_coord = sorted(gene_coord, key=lambda x: (int(x[1]), int(x[2])))
 
-            pvm_by_coord = pvm_raw.loc[[coord[0] for coord in gene_coord], :]
+            pvm_by_coord = pvm_by_coord.loc[[coord[0] for coord in gene_coord], :]
             pvm_by_coord["chrom"] = [coord[1] for coord in gene_coord]
             pvm_by_coord["pos"] = [coord[2] for coord in gene_coord]
 
@@ -197,7 +193,7 @@ class ASEReport:
                 sep = ","
 
             self.pvm_raw.to_csv(save_prefix + "-pval_matrix_raw." + report_fmt, sep=sep)
-            self.pvm_by_coord.to_csv(save_prefix + "-pval_matrix_sorted." + report_fmt, sep=sep)
+            self.pvm_by_coord.to_csv(save_prefix + "-pval_matrix_sorted_filtered." + report_fmt, sep=sep)
 
         return self
 
@@ -208,10 +204,10 @@ class ASEReport:
         save_prefix = self.save_prefix
 
         if self.pvm_raw is not None:
-            grid = self._pr_draw_p_val_htmp()
-            if grid:
-                grid.fig.savefig(save_prefix + "-heatmap." + fig_fmt)
-                plt.close("all")
+            # grid = self._pr_draw_p_val_htmp()
+            # if grid:
+            #     grid.fig.savefig(save_prefix + "-heatmap." + fig_fmt)
+            #     plt.close("all")
 
             fig = self._pr_draw_ase_gene_count_across_genome()
             fig.set_figheight(9)

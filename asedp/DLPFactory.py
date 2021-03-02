@@ -25,6 +25,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from ASEDataset import ASEDataset, ReshapeMatrixAndPickupLabel, MultipleTestAdjustMent
 
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
+                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 class DLPFactory:
     """A class to train the neuroal network.

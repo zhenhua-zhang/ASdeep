@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 
 from zutils import B2M
 
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
+                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 class HelbertCurve:
     def __init__(self, seq, kmers=4, biallele=True, seqorder="sm"):

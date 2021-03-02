@@ -20,7 +20,8 @@ from statsmodels.sandbox.stats.multicomp import multipletests
 
 from HelbertCurve import HelbertCurve
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{', level=logging.INFO)
+logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
+                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 class MultipleTestAdjustMent(object):
     """Adjust p-values for multiple tests.
