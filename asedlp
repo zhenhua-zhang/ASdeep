@@ -1,102 +1,121 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Author            : Zhenhua Zhang
-# Email             : zhenhua.zhang217@gmail.com
-# License         : MIT
-# Create date : 2020 Mar 07 10:04:54
 
-"""Deep learning methods to predict allele-specific expression effects by
+# Author    : Zhenhua Zhang
+# E-mail    : zhenhua.zhang217@gmail.com
+# License   : MIT
+# Create on : 2020 Mar 07 10:04:54
+
+'''Deep learning methods to predict allele-specific expression effects by
 integrating RNA-seq results and haplotypes.
 
 Note:
     The package is a allele-specific expression analysis tool using the output
-    from WASP.
+    from WASP or GATK/ASEReadCounter.
 
 Dependency:
     - PyTorch (>= 1.3.0)
     - torchvision (>=0.4.2)
     - Matplotlib
-    - PyTables
     - Pandas
     - Numpy
 
 Usage:
+    ./asedlp {quantify,train,cam,predict}
 
 TDOO:
-"""
+    [ ] Update the documents
+'''
 
-import pdb
 import sys
 import logging
 import argparse
 
-import numpy as np
+import numpy
 
 logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
                     datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 def get_args():
     '''Get CLI arguments.'''
-    parser = argparse.ArgumentParser(description="A package working on allele-specific expression.")
-    parser.add_argument("-l", "--log-file", action="store", dest="log_file", default=None, help="The file into which logging write.")
-    parser.add_argument("-v", "--verbose-level", action="count", dest="verbose_level", default=0, help="Verbose level. A counting keyword argument.")
+    parser = argparse.ArgumentParser(description='A tool for the analysis of allele-specific expression.')
+    parser.add_argument('-l', '--log-file', dest='log_file', default=None, metavar='FILE',
+                        help='The file into which logging write.')
+    parser.add_argument('-v', '--verbose-level', action='count', dest='verbose_level', default=0,
+                        help='Verbose level. A counting keyword argument.')
 
-    sub_parsers = parser.add_subparsers(prog="asedlp", dest="subcmd")
-    quant_parser = sub_parsers.add_parser("quant", help="Quantification of ASE effects")
-    quant_parser.add_argument("-i", "--sample-id", required=True, dest="sample_id", help="The sample ID.")
-    quant_parser.add_argument("-g", "--gene-ids", nargs="+", default=[], dest="gene_ids", help="The gene IDs. Default: %(default)s")
-    quant_parser.add_argument("-G", "--gene-id-file", default=None, dest="gene_id_file", help="The file from which read the gene ids. Default: %(default)s")
-    quant_parser.add_argument("--haplotypes", default="./haps.h5", dest="haplotypes", help="Path to HDF5 file to read phased haplotypes from. Default: %(default)s")
-    quant_parser.add_argument("--snp-tab", default="./snp_tab.h5", dest="snp_tab", help="Path to HDF5 file to read SNP information from. Default: %(default)s")
-    quant_parser.add_argument("--snp-index", default="./snp_idex.h5", dest="snp_index", help="Path to HDF5 file to read SNP index from. Default: %(default)s")
-    quant_parser.add_argument("--sequence-tab", default="./seq_tab.h5", dest="seq_tab", help="Path to HDF5 file to read reference sequence from. Default: %(default)s")
-    quant_parser.add_argument("--ref-read-counts", default="./ref_count_tab.h5", dest="ref_tab", help="Path to HDF5 file to read reference reads counts from. Default: %(default)s")
-    quant_parser.add_argument("--alt-read-counts", default="./alt_count_tab.h5", dest="alt_tab", help="Path to HDF5 file to read alternative reads counts from. Default: %(default)s")
-    quant_parser.add_argument("--genome-annot", default="./genome.gff", dest="genome_annot", help="Path to GFF / GTF file to read gene structure information from. Default: %(default)s")
-    quant_parser.add_argument("--shift-factor", default=5e2, dest="bp_shift_factor", help="Number of base pairs shift from the start codon, the strand will be considered. Default: %(default)s")
-    quant_parser.add_argument("--save-as-ase-report", default=None, dest="as_ase_report", help="The file to which write the ASE effect into. Default: %(default)s")
-    quant_parser.add_argument("--save-as-train-set", default=None, dest="as_train_set", help="The file to which write the training dataset into. Default: %(default)s")
+    sub_parsers = parser.add_subparsers(prog='asedlp', dest='subcmd')
+    quant_parser = sub_parsers.add_parser('quantify', help='Quantify ASE effects and generate training set')
+    quant_parser.add_argument('-i', '--sample-id', required=True, dest='sample_id', metavar='STRING',
+                              help='The sample ID in variants file.')
+    quant_parser.add_argument('-v', '--variants-from', required=True, dest='variants_file', metavar='FILE',
+                              help='The file from which read variants information.')
+    quant_parser.add_argument('-s', '--genome-seq-from', required=True, dest='genome_seq_file', metavar='FILE',
+                              help='The file from which read the genome sequence.')
+    quant_parser.add_argument('-f', '--gene-feature-from', required=True, dest='gene_feature_file', metavar='FILE',
+                              help='The file (GFF/GTF) from which read the gene feature.')
+    quant_parser.add_argument('-r', '--ase-readcount-from', required=True, dest='ase_readcount_file', metavar='FILE',
+                              help='The file from which read the allele-specific read counts. The file should be a space-delimited file including 7 fields named by chrom, pos, ref, alt, gt, ref_rc, alt_rc, oth_rc')
+    quant_parser.add_argument('-g', '--gene-ids', default=[], nargs='+', dest='gene_ids', metavar='STRING',
+                              help='The gene IDs. Default: %(default)s')
+    quant_parser.add_argument('-G', '--gene-id-from', default=None, dest='gene_id_file', metavar='FILE',
+                              help='The file from which read the gene ids. Default: %(default)s')
+    quant_parser.add_argument('-T', '--train-set-to', default='ase-train-set.fa.gz', dest='as_train_set', metavar='FILE',
+                              help='The file to which write the training dataset into. Default: %(default)s')
+    quant_parser.add_argument('-R', '--ase-report-to', default='ase-report.txt', dest='as_ase_report', metavar='FILE',
+                              help='The file to which write the ASE effect into. Default: %(default)s')
+    quant_parser.add_argument('-F', '--shift-factor', default=1e3, dest='shift_factor', metavar='INTEGER',
+                              help='Number of base pairs shift from the start codon, the strand will be considered. Default: %(default)s')
 
-    merge_parser = sub_parsers.add_parser("merge", help="Merge allele specific expression quantification report by subcommand quant")
-    merge_parser.add_argument("-r", "--report-files", required=True, dest="report_files", nargs="*", help="Input files. Sometimes, you need quotation mark to ensure the pattern is not expaned by the bash parser. Default: %(default)s")
-    merge_parser.add_argument("-p", "--save-prefix", default="ase_report", dest="save_prefix", help="The file to which write the heatmap into. Default: %(default)s")
-    merge_parser.add_argument("-g", "--genome-annot", default="./genome.gff", dest="genome_annot", help="Path to GFF / GTF file to read gene structure information from. Default: %(default)s")
-    merge_parser.add_argument("--max-na-per-gene", default=1335, dest="max_na_per_gene", type=int, help="The maximum number of NAs in row (gene id) in P-value matrix. Default: %(default)s")
-
-    train_parser = sub_parsers.add_parser("train", help="Train the model on quantfified ASE effects.")
-    train_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
-    train_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar="GENE-ID", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
-    train_parser.add_argument("-s", "--model-state-path", default="./torch_model.pth", dest="model_state_path", help="The path to which save the model state dict. Default: %(default)s")
-    # train_parser.add_argument("-l", "--loss-curve-path", default="./loss_curve", dest="loss_curve_path", help="The path into which save the training loss curve. Default: %(default)s")
-    train_parser.add_argument("-L", "--logging-path", default="./logging_run", dest="logging_path", help="The path into which write the logging files for tensorboard. Default: %(default)s")
-    train_parser.add_argument("-r", "--learning-rate", type=float, default=1e-5, dest="learning_rate", help="Learning rate.    Default: %(default)s")
-    train_parser.add_argument("-e", "--n-epoch", default=50, type=int, dest="n_epoch", help="The number of epoch will be run. Default: %(default)s")
-    # train_parser.add_argument("-x", "--cv-times", default=8, type=int, dest="cv_times", help="Times of cross-validation. Default: %(default)s")
-    train_parser.add_argument("-R", "--random-state", default=31415, type=int, dest="random_state", help="The random seed for torch. Default: %(default)s")
-    train_parser.add_argument("--pp-train", default=.7, type=float, dest="pp_train", help="The propotion of dataset will be used as training set. Default: %(default)s")
-    train_parser.add_argument("--log-per-n-epoch", default=5, type=int, dest="log_per_n_epoch", help="Number of epoch for each evaluation point. Default: %(default)s")
+    train_parser = sub_parsers.add_parser("train", help="Train the model on quantified ASE effects")
+    train_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar='FILE', nargs="*",
+                              help="The pattern to read input files.")
+    train_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar="STRING",
+                              help="The Ensembl id of a gene for which train the model. Default: %(default)s")
+    train_parser.add_argument("-s", "--model-state-path", default="./torch_model.pth", dest="model_state_path", metavar='FILE',
+                              help="The path to which save the model state dict. Default: %(default)s")
+    train_parser.add_argument("-L", "--logging-path", default="./logging_run", dest="logging_path", metavar='DIRECTORY',
+                              help="The path into which write the logging files for tensorboard. Default: %(default)s")
+    train_parser.add_argument("-r", "--learning-rate", type=float, default=1e-5, dest="learning_rate", metavar='FLOAT',
+                              help="Learning rate. Default: %(default)s")
+    train_parser.add_argument("-e", "--n-epoch", default=50, type=int, dest="n_epoch", metavar='INTEGER',
+                              help="The number of epoch will be run. Default: %(default)s")
+    train_parser.add_argument("-R", "--random-state", default=31415, type=int, dest="random_state", metavar='INTEGER',
+                              help="The random seed for torch. Default: %(default)s")
+    train_parser.add_argument("--pp-train", default=.7, type=float, dest="pp_train", metavar='FLOAT',
+                              help="The propotion of dataset will be used as training set. Default: %(default)s")
+    train_parser.add_argument("--log-per-n-epoch", default=5, type=int, dest="log_per_n_epoch", metavar='INTEGER',
+                              help="Number of epoch for each evaluation point. Default: %(default)s")
 
     cam_parser = sub_parsers.add_parser("cam", help="Show the Class Activation Map")
-    cam_parser.add_argument("-g", "--gene-id", required=True, dest="gene_id", metavar="GENE-ID", help="The Ensembl id of a gene for which train the model.")
-    cam_parser.add_argument("-p", "--file-path", required=True, dest="file_path", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
-    cam_parser.add_argument("-s", "--model-state", required=True, dest="model_state", metavar="MODEL-STATE", help="The model state to be loaded.")
-    cam_parser.add_argument("-o", "--save-path", default="output_pic", dest="save_path", metavar="CAM-SAVE-PATH", help="The path into which save the CAM. Default: %(default)s")
+    cam_parser.add_argument("-g", "--gene-id", required=True, dest="gene_id", metavar="STRING",
+                            help="The Ensembl id of a gene for which train the model.")
+    cam_parser.add_argument("-p", "--file-path", required=True, dest="file_path", metavar="FILE",
+                            nargs="*", help="The pattern to read input files.")
+    cam_parser.add_argument("-s", "--model-state", required=True, dest="model_state", metavar="FILE",
+                            help="The model state to be loaded.")
+    cam_parser.add_argument("-o", "--save-path", default="output_pic", dest="save_path", metavar="FILE",
+                            help="The path into which save the CAM. Default: %(default)s")
 
-    pred_parser = sub_parsers.add_parser("pred", help="Predict based on given net work state")
-    pred_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar="GENE-ID", help="The Ensembl id of a gene for which train the model. Default: %(default)s")
-    pred_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar="FILE-PATH", nargs="*", help="The pattern to read input files.")
-    pred_parser.add_argument("-s", "--model-state", default="./test/model_state.pth", dest="model_state", metavar="MODEL-STATE", help="The model state to be loaded. Default: %(default)s")
+    pred_parser = sub_parsers.add_parser("predict", help="Predict based on given net work state")
+    pred_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", nargs="*", metavar='FILE',
+                             help="The pattern to read input files.")
+    pred_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar='STRING',
+                             help="The Ensembl id of a gene for which train the model. Default: %(default)s")
+    pred_parser.add_argument("-s", "--model-state", default="./test/model_state.pth", dest="model_state", metavar="FILE",
+                             help="The model state to be loaded. Default: %(default)s")
 
     return parser
 
 
-def quant(args):
+def quantify(args):
     '''Qunatify the allele-specific expression effect for genes.'''
     try:
-        from ASEFactory import ASEFactory
+        from asedeep.ASEFactory import ASEFactory
     except ImportError as ime:
         logging.error("Import error: {}".format(ime))
         sys.exit(1)
+
     afactory = ASEFactory(args)
     afactory.gen_gnm_itvl() \
             .gen_seq() \
@@ -105,32 +124,13 @@ def quant(args):
             .save_train_set()
 
 
-def merge(args):
-    '''Merge ASE quantification report and generate basic statistical analysis.'''
-    try:
-        from ASEReport import ASEReport
-    except ImportError as ime:
-        logging.error("Import error: {}".format(ime))
-        sys.exit()
-
-    file_path_list = args.report_files
-    genome_annot = args.genome_annot
-    save_prefix = args.save_prefix
-    max_na_per_gene = args.max_na_per_gene
-
-    ase_report = ASEReport(file_path_list, save_prefix, genome_annot=genome_annot)
-    ase_report.init(max_na_per_gene=max_na_per_gene) \
-            .report() \
-            .visualize()
-
-
 def train(args):
     '''Train a CNN model.'''
     try:
         import torch
         import torch.nn as nn
         import torchvision.models as models
-        from DLPFactory import DLPFactory
+        from asedeep.DLPFactory import DLPFactory
     except ImportError as ime:
         logging.error("Import error: {}".format(ime))
         sys.exit(1)
@@ -138,7 +138,6 @@ def train(args):
     file_path_pool = args.file_path_pool
     gene_id = args.gene_id
     n_epoch = args.n_epoch
-    # cv_times = args.cv_times
     pp_train = args.pp_train
     random_state = args.random_state
     logging_path = args.logging_path
@@ -146,7 +145,7 @@ def train(args):
     log_per_n_epoch = args.log_per_n_epoch
     model_state_path = args.model_state_path
 
-    np.random.seed(random_state)
+    numpy.random.seed(random_state)
     torch.manual_seed(random_state)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -156,9 +155,8 @@ def train(args):
     net.conv1 = nn.Conv2d(1, 64, (7, 7), (2, 2), (3, 3), bias=False)
     net.fc = nn.Linear(in_features=2048, out_features=3, bias=True)
 
-    dfactory = DLPFactory(net, gene_id, file_path_pool,
-                            logging_path=logging_path,
-                            log_per_n_epoch=log_per_n_epoch)
+    dfactory = DLPFactory(net, gene_id, file_path_pool, logging_path=logging_path,
+                          log_per_n_epoch=log_per_n_epoch)
     dfactory.init() \
             .load_dataset() \
             .train_test_split(pp_train) \
@@ -166,16 +164,15 @@ def train(args):
             .save_model(model_state_path)
 
 
-def pred():
+def predict():
     '''Predict.'''
     raise NotImplementedError("Not implemented yet!!!")
 
 
 def cam(args):
-    '''Calculate classification activation map.
-    '''
+    '''Calculate classification activation map.'''
     try:
-        from CamFactory import CamFactory
+        from asedeep.CamFactory import CamFactory
     except ImportError as ime:
         logging.error("Import error: {}".format(ime))
         sys.exit(1)
@@ -193,21 +190,18 @@ def cam(args):
 
 
 def main():
-    '''Main function.
-    '''
+    '''Main function.'''
     parser = get_args()
     args = parser.parse_args()
-    # pdb.set_trace()
-    if args.subcmd == "quant":
-        quant(args)
-    elif args.subcmd == "merge":
-        merge(args)
+
+    if args.subcmd == "quantify":
+        quantify(args)
     elif args.subcmd == 'train':
         train(args)
     elif args.subcmd == "cam":
         cam(args)
-    elif args.subcmd == 'pred':
-        pred()
+    elif args.subcmd == 'predict':
+        predict()
     else:
         parser.print_help()
 

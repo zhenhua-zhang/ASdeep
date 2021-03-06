@@ -8,6 +8,9 @@
 ## ASE analysis pipeline by fastp, STAR, WASP, SAMtools, and GATK/ASEReadCounter
 #
 
+# Rsync FASTQ files from calculon
+# rsync -avzh umcg-zzhang@172.23.34.247:/groups/umcg-bios/prm02/rawdata/rnaseq/AD10W1ACXX-1-11_* .
+
 #
 ## XXX: Caution!
 #
@@ -51,7 +54,6 @@
 #
 ## Meta config {
 #
-set -Ee -o pipefail
 
 # Load Easy-build modules
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
@@ -63,12 +65,13 @@ ASEPL_VERSION="0.2.0"
 ASEPL_FILENAME=$(basename "$0")
 # } // ENVs
 
+set -Ee -o pipefail
+
 # Text color and format {
 if [[ -x /usr/bin/tput ]] && tput setaf 1 &> /dev/null; then
     tput sgr0
     fmtBold=$(tput bold)
     fmtReset=$(tput sgr0)
-    fmtItalic=$(tput sitm)
 
     fmtRed=$(tput setaf 1)
     fmtBlue=$(tput setaf 4)
@@ -82,7 +85,6 @@ if [[ -x /usr/bin/tput ]] && tput setaf 1 &> /dev/null; then
 else
     fmtBold="\e[1m"
     fmtReset="\e[0m"
-    fmtItalic="\e[3m"
 
     fmtRed="\e[1;31m"
     fmtBlue="\e[1;34m"
@@ -130,7 +132,7 @@ echoHelp() {
 $ASEPL_FILENAME, Version ${ASEPL_VERSION:=UNKNOWN}
 
 It is recommended to use the a configuration file instead of commandline
-arguments and flags. Please check the \`./config\` file for more information.
+arguments and flags. Please check the \`template.conf\` file for more information.
 
 Help:
   -c, --conf     Required.
@@ -167,13 +169,15 @@ done
 
 # This is an example config. The user is allowed to use a config file via CLI -c/--conf option.
 # #
-# ## Config {
+# ## Config { # This is a template
 # #
-# projDir=/groups/umcg-bios/tmp01/users/umcg-zzhang/projects/wp_ase_dlp
-# workDir=$projDir/temps/runTest
-# 
 # cohortId=CODAM
 # fastqId=AD10W1ACXX-1-11
+# sampleId=188_2233
+# 
+# # Master directory
+# projDir=/groups/umcg-bios/tmp01/users/umcg-zzhang/projects/wp_ase_dlp
+# workDir=$projDir/outputs/aseQuan_v2
 # 
 # # SLURM logs
 # logDir=$workDir/$cohortId/logDir 
@@ -188,11 +192,11 @@ done
 # 
 # # The final output results
 # optDir=$workDir/$cohortId/optDir
-# fastpOptDir=$OptDir/$fastqId/fastpOptDir
-# starOptDir=$OptDir/$fastqId/starOptDir
-# waspOptDir=$OptDir/$fastqId/waspOptDir
-# gatkOptDir=$OptDir/$fastqId/gatkOptDir
-# aseqOptDir=$OptDir/$fastqId/aseqOptDir
+# fastpOptDir=$optDir/$fastqId/fastpOptDir
+# starOptDir=$optDir/$fastqId/starOptDir
+# waspOptDir=$optDir/$fastqId/waspOptDir
+# gatkOptDir=$optDir/$fastqId/gatkOptDir
+# aseqOptDir=$optDir/$fastqId/aseqOptDir
 # 
 # # Genome sequence and gene structure
 # genomeDir=$workDir/genomeDir
@@ -209,15 +213,14 @@ done
 # fastqPrefix=
 # fastqSuffix=.fq.gz
 # 
-# # ID pairs: FASTQ id vs genotype id
-# sampleIdFile=$projDir/inputs/idmapping/BIOS-genotype-rnaseq-ids_with-LL_usable_20210105.txt
-# sampleId=$(grep -w $fastqId $sampleIdFile | cut -f2)
+# # Gene ids
+# geneIdFile=$projDir/inputs/Ensembl_references/protein_coding_gene_id.txt
 # 
 # # Python virtual environment
 # pyEnv=~/Documents/projects/wp_ase_dlp/scripts/.env
 # 
 # # Job dependency
-# afterok="--dependency=afterok"  # XXX: the colon after the afterok is maully added
+afterok="--dependency=afterok"  # XXX: the colon after the afterok is maully added
 # # } // Config
 
 #
@@ -243,16 +246,16 @@ else
     mem=150G
     cpus=15
     time=0:59:00
-    STARGenomeIndexJobId=$(echo sbatch \
+    STARGenomeIndexJobId=$(sbatch \
         --mem=$mem \
         --time=$time \
         --cpus-per-task=$cpus \
         --job-name=$stepName \
-        --output=$workDir/logDir/%j-$stepName.log \
+        --output=$logDir/%j-$stepName.log \
         <<EOF | cut -d' ' -f4
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -Ee -o pipefail
 
 mkdir -p $workDir/genomeDir
 
@@ -275,13 +278,13 @@ fi
 #
 ## WASP: Generate SNP HDF5 database for WASP {
 #
-stepName=WaspCreateSnpHdf5Database
+stepName=WASPCreateSnpHdf5Database
 if [ -d $snpH5dbDir ]; then
     echoWarn "Found $snpH5dbDir, skip $stepName"
 else
     mem=5G
     cpus=1
-    time=0:59:00
+    time=1:59:00
     WaspCreateSnpHdf5DatabaseJobId=$(sbatch \
         --mem=$mem \
         --time=$time \
@@ -290,8 +293,8 @@ else
         --output=$logDir/%j-%u-$stepName.log \
         <<EOF | cut -f4 -d ' '
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -Ee -o pipefail
 
 mkdir -p $snpH5dbDir
 mkdir -p $tmpDir/snpH5dbTmpDir
@@ -310,14 +313,12 @@ if [[ ! -e $vcfFile.bai ]]; then
 fi
 
 ## Split
-for chr in {1..22}; do
-    bcftools view \
-        -O z
-        -o $tmpDir/snpH5dbTmpDir/$cohortId-chr${chr}.vcf.gz \
-        $vcfFile ${chr}
-done
+seq 1 22 | xargs \
+    -n 1 \
+    -I '{}' bcftools view -Oz -o $tmpDir/snpH5dbTmpDir/$cohortId-chr{}.vcf.gz $vcfFile {}
 
 # Generate SNP HDF5 database
+module purge
 module load HDF5/1.8.14-foss-2018b
 module list
 ~/tools/bin/snp2h5 \
@@ -339,12 +340,20 @@ fi
 #
 ## FASTP: Preprocessing fastq files. {
 #
-mem=5G
+mem=3G
 cpus=1
 time=0:19:00
 stepName=FastpPreproc
-dependency=$afterok:$STARMappingJobId:$WaspCreateSnpHdf5DatabaseJobId
-if [[ $dependency == "--afterok::" ]]; then dependency=""; fi
+dependency=$afterok
+if [[ $STARGenomeIndexJobId != '' ]]; then
+    dependency=$dependency:$STARGenomeIndexJobId
+fi
+
+if [[ $WaspCreateSnpHdf5DatabaseJobId != '' ]]; then
+    dependency=$dependency:$WaspCreateSnpHdf5DatabaseJobId
+fi
+
+if [[ $dependency == "--dependency=afterok" ]]; then dependency=""; fi
 fastpPreprocJobId=$(sbatch $dependency \
     --mem=$mem \
     --time=$time \
@@ -386,21 +395,22 @@ echoInfo $stepName was submitted: $fastpPreprocJobId ...
 #
 ## STAR: Mapping reads to genome {
 #
-mem=50G  # XXX: For human genome, it requires at least 40G memory.
-cpus=1
-time=0:45:00
+mem=40G  # XXX: For human genome, it requires at least 40G memory.
+cpus=5
+time=0:29:00
 stepName=STARMapping
 dependency=$afterok:$fastpPreprocJobId
+if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
 STARMappingJobId=$(sbatch $dependency \
     --mem=$mem \
     --time=$time \
     --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
-    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    --output=$logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -Ee -o pipefail
 
 # Mapping
 module load STAR/2.6.1c-foss-2018b
@@ -427,9 +437,9 @@ samtools addreplacerg \
     -o $starTmpDir/$fastqId.newrg.bam \
     $starTmpDir/$fastqId".Aligned.sortedByCoord.out.bam"
 
-mv -f $starTmpDir/$fastqId.newrg.bam $starTmpDir/$fastqId".Aligned.sortedByCoord.out.bam"
+mv -f $starTmpDir/$fastqId.newrg.bam $starTmpDir/$fastqId.bam
 
-samtools index -@ $cpus $starTmpDir/$fastqId*.bam
+samtools index -@ $cpus $starTmpDir/$fastqId.bam
 EOF
 )
 echoInfo "$stepName was submitted: $STARMappingJobId ..."
@@ -438,11 +448,12 @@ echoInfo "$stepName was submitted: $STARMappingJobId ..."
 #
 ## WASP: Find intersected SNPs {
 #
-mem=8G
+mem=6G
 cpus=1
-time=0:49:00
-stepName=WaspRMBFindIntersectedSnps
+time=0:59:00
+stepName=WASPRMBFindIntersectedSnps
 dependency=$afterok:$STARMappingJobId
+if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
 WaspRMBFindIntersectedSnpsJobId=$(sbatch $dependency \
     --mem=$mem \
     --time=$time \
@@ -451,8 +462,8 @@ WaspRMBFindIntersectedSnpsJobId=$(sbatch $dependency \
     --output=$logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -Ee -o pipefail
 
 module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
 module list
@@ -468,13 +479,19 @@ python ~/tools/WASP/mapping/find_intersecting_snps.py \
     --snp_index $snpH5dbDir/snps_index.h5 \
     --haplotype $snpH5dbDir/haplotype.h5 \
     --samples $sampleId \
-    $starTmpDir/$fastqId".Aligned.sortedByCoord.out.bam"
+    $starTmpDir/$fastqId.bam
 
-mv -f $waspTmpDir/$fastqId".Aligned.sortedByCoord.out.keep.bam" $waspTmpDir/$fastqId".keep.bam"
-mv -f $waspTmpDir/$fastqId".Aligned.sortedByCoord.out.to.remap.bam" $waspTmpDir/$fastqId".to.remap.bam"
-mv -f $waspTmpDir/$fastqId".Aligned.sortedByCoord.out.remap.fq1.gz" $waspTmpDir/$fastqId".remap.fq1.gz" 
-mv -f $waspTmpDir/$fastqId".Aligned.sortedByCoord.out.remap.fq2.gz" $waspTmpDir/$fastqId".remap.fq2.gz" 
-mv -f $waspTmpDir/$fastqId".Aligned.sortedByCoord.out.remap.single.fq.gz" $waspTmpDir/$fastqId".remap.single.fq.gz" 
+mv -f $waspTmpDir/$fastqId.keep.bam $waspTmpDir/$fastqId.keep.sam
+mv -f $waspTmpDir/$fastqId.to.remap.bam $waspTmpDir/$fastqId.to.remap.sam
+
+# Convert the SAM into BAM. Note: find_intersecting_snps.py output SAM not BAM
+module purge
+module load SAMtools
+module list
+
+samtools view -hbo $waspTmpDir/$fastqId.keep.bam $waspTmpDir/$fastqId.keep.sam
+samtools view -hbo $waspTmpDir/$fastqId.to.remap.bam $waspTmpDir/$fastqId.to.remap.sam
+rm -f $waspTmpDir/$fastqId.keep.sam $waspTmpDir/$fastqId.to.remap.sam
 EOF
 )
 echoInfo "$stepName was submitted: $WaspRMBFindIntersectedSnpsJobId ..."
@@ -483,19 +500,22 @@ echoInfo "$stepName was submitted: $WaspRMBFindIntersectedSnpsJobId ..."
 #
 ## STAR: Remapping by STAR for WASP {
 #
-mem=50G
-cpus=5
+mem=40G
+cpus=2
 time=0:29:00
-stepName=WaspRMBRemapping
+stepName=WASPRMBRemapping
 dependency=$afterok:$WaspRMBFindIntersectedSnpsJobId
+if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
 WaspRMBRemappingJobId=$(sbatch $dependency \
-    --time=$time --mem=$mem --cpus-per-task=$cpus \
-    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    --mem=$mem \
+    --time=$time \
+    --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
+    --output=$logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -Ee -o pipefail
 
 module load STAR/2.6.1c-foss-2018b
 module list
@@ -526,21 +546,22 @@ echoInfo "$stepName was submitted: $WaspRMBRemappingJobId ..."
 #
 ## WASP: RMB filtering and removing duplication {
 #
-mem=10G
+mem=3G
 cpus=1
-time=0:59:00
-stepName=WaspRMBFilterAndRmDup
+time=0:29:00
+stepName=WASPRMBFilterAndRmDup
 dependency=$afterok:$WaspRMBRemappingJobId
+if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
 WaspRMBFilterAndRmDupJobId=$(sbatch $dependency \
-    --mem=$mem 
-    --time=$time 
+    --mem=$mem \
+    --time=$time \
     --cpus-per-task=$cpus \
-        --job-name=$fastqId-$stepName \
-        --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    --job-name=$fastqId-$stepName \
+    --output=$logDir/%j-$fastqId-$stepName.log \
         <<EOF | cut -f4 -d' '
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -Ee -o pipefail
 
 # Filter remapped reads
 module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
@@ -575,25 +596,26 @@ samtools index \
     -@ $cpus \
     $waspTmpDir/${fastqId}.keep.merged.sorted.bam
 
-# Count allelic reads (with duplications)
-module purge
-module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
-module list
-
-if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
-python ~/tools/WASP/CHT/bam2h5.py \
-    --chrom $chromInfoFile \
-    --individual $sampleId \
-    --snp_index $snpH5dbDir/snps_index.h5 \
-    --snp_tab $snpH5dbDir/snps_tab.h5 \
-    --haplotype $snpH5dbDir/haplotype.h5 \
-    --txt_counts $waspTmpDir/${fastqId}.wasp.allAlleleReadCounts.txt \
-    --read_counts $waspTmpDir/${fastqId}.wasp.allAlleleReadCounts.h5 \
-    --ref_as_counts $waspTmpDir/${fastqId}.wasp.refAlleleReadCounts.h5 \
-    --alt_as_counts $waspTmpDir/${fastqId}.wasp.altAlleleReadCounts.h5 \
-    --other_as_counts $waspTmpDir/${fastqId}.wasp.otherAlleleReadCounts.h5 \
-    $waspTmpDir/${fastqId}.keep.merged.sorted.bam \
-    2>1 | grep -v WARNING
+# # The allelic read counts by bam2h5.py of WASP are in messy, port to GTAK/ASEReadCounter instead.
+# # Count allelic reads (with duplications)
+# module purge
+# module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+# module list
+# 
+# if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
+# python ~/tools/WASP/CHT/bam2h5.py \
+#     --chrom $chromInfoFile \
+#     --individual $sampleId \
+#     --snp_index $snpH5dbDir/snps_index.h5 \
+#     --snp_tab $snpH5dbDir/snps_tab.h5 \
+#     --haplotype $snpH5dbDir/haplotype.h5 \
+#     --txt_counts $waspTmpDir/${fastqId}.wasp.allAlleleReadCounts.txt \
+#     --read_counts $waspTmpDir/${fastqId}.wasp.allAlleleReadCounts.h5 \
+#     --ref_as_counts $waspTmpDir/${fastqId}.wasp.refAlleleReadCounts.h5 \
+#     --alt_as_counts $waspTmpDir/${fastqId}.wasp.altAlleleReadCounts.h5 \
+#     --other_as_counts $waspTmpDir/${fastqId}.wasp.otherAlleleReadCounts.h5 \
+#     $waspTmpDir/${fastqId}.keep.merged.sorted.bam \
+#     2>&1 | grep -v WARNING
 
 
 # Remove duplications
@@ -622,50 +644,50 @@ samtools index \
     -@ $cpus \
     $waspTmpDir/${fastqId}.keep.merged.sorted.rmdup.sorted.bam
 
-
-# Count allelic reads (without duplications)
-module purge
-module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
-module list
-
-if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
-python ~/tools/WASP/CHT/bam2h5.py \
-    --chrom $chromInfoFile \
-    --individual $sampleId \
-    --snp_index $snpH5dbDir/snps_index.h5 \
-    --snp_tab $snpH5dbDir/snps_tab.h5 \
-    --haplotype $snpH5dbDir/haplotype.h5 \
-    --txt_counts $waspTmpDir/${fastqId}.nondup.wasp.allAlleleReadCounts.txt \
-    --read_counts $waspTmpDir/${fastqId}.nondup.wasp.allAlleleReadCounts.h5 \
-    --ref_as_counts $waspTmpDir/${fastqId}.nondup.wasp.refAlleleReadCounts.h5 \
-    --alt_as_counts $waspTmpDir/${fastqId}.nondup.wasp.altAlleleReadCounts.h5 \
-    --other_as_counts $waspTmpDir/${fastqId}.nondup.wasp.otherAlleleReadCounts.h5 \
-    $waspTmpDir/${fastqId}.keep.merged.sorted.rmdup.sorted.bam
-    2>1 | grep -v WARNING
+# The allelic read counts by bam2h5.py of WASP are in messy, port to GTAK/ASEReadCounter instead.
+# # Count allelic reads (without duplications)
+# module purge
+# module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+# module list
+# 
+# if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
+# python ~/tools/WASP/CHT/bam2h5.py \
+#     --chrom $chromInfoFile \
+#     --individual $sampleId \
+#     --snp_index $snpH5dbDir/snps_index.h5 \
+#     --snp_tab $snpH5dbDir/snps_tab.h5 \
+#     --haplotype $snpH5dbDir/haplotype.h5 \
+#     --txt_counts $waspTmpDir/${fastqId}.nondup.wasp.allAlleleReadCounts.txt \
+#     --read_counts $waspTmpDir/${fastqId}.nondup.wasp.allAlleleReadCounts.h5 \
+#     --ref_as_counts $waspTmpDir/${fastqId}.nondup.wasp.refAlleleReadCounts.h5 \
+#     --alt_as_counts $waspTmpDir/${fastqId}.nondup.wasp.altAlleleReadCounts.h5 \
+#     --other_as_counts $waspTmpDir/${fastqId}.nondup.wasp.otherAlleleReadCounts.h5 \
+#     $waspTmpDir/${fastqId}.keep.merged.sorted.rmdup.sorted.bam
+#     2>&1 | grep -v WARNING
 EOF
 )
-
 echoInfo "$stepName was submitted: $WaspRMBFilterAndRmDupJobId ..."
 # } // WASP: RMB filtering and removing duplication
 
 #
 ## GATK: ASEReadCounter counts reads allelicly {
 #
-mem=25G
+mem=15G
 cpus=1
-time=0:29:00
-stepName=GatkASEReaderCounter
+time=0:59:00
+stepName=GATKASEReadCounter
 dependency=$afterok:$WaspRMBFilterAndRmDupJobId
-GatkASEReaderCounterJobId=$(sbatch $dependency \
+if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
+GatkASEReadCounterJobId=$(sbatch $dependency \
     --mem=$mem \
     --time=$time \
     --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
-    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    --output=$logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -Ee -o pipefail
 
 module load GATK
 module list
@@ -676,7 +698,7 @@ gatk ASEReadCounter \
     --reference $genomeFastaFile \
     --input $waspTmpDir/${fastqId}.keep.merged.sorted.bam \
     --output $gatkTmpDir/$fastqId.gatkAlleleReadCounts.csv \
-    2>1 | grep -v WARN
+    2>&1 | grep -v WARN
 
 gatk ASEReadCounter \
     --variant $vcfFile \
@@ -684,67 +706,96 @@ gatk ASEReadCounter \
     --reference $genomeFastaFile \
     --input $waspTmpDir/${fastqId}.keep.merged.sorted.rmdup.sorted.bam \
     --output $gatkTmpDir/$fastqId.nondup.gatkAlleleReadCounts.csv \
-    2>1 | grep -v WARN
+    2>&1 | grep -v WARN
 EOF
 )
+echoInfo "$stepName was submitted: $GatkASEReadCounterJobId ..."
 # } // GATK: ASEReadCounter counts reads allelicly
 
 #
-## asequan estimates ASE effects {
+## aseq estimates ASE effects {
 #
-mem=1G
-cpus=1
-time=0:9:00
-stepName=AsequanASEEstimation
-dependency=$afterok:$WaspRMBFilterAndRmDupJobId:$GatkASEReaderCounterJobId
-AsequanASEEstimationJobId=$(sbatch $dependency \
+mem=5G
+cpus=2
+time=1:29:00
+stepName=AseqASEEstimation
+dependency=$afterok:$GatkASEReadCounterJobId
+if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
+AseqASEEstimationJobId=$(sbatch $dependency \
     --mem=$mem \
     --time=$time \
     --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
-    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    --output=$logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
+set -Ee -o pipefail
 
+module load Python/3.7.4-GCCcore-7.3.0-bare
+if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
+
+python $projDir/scripts/asedlp quantify \
+    -v $vcfFile \
+    -i $sampleId \
+    -G $geneIdFile \
+    -s $genomeFastaFile \
+    -f $genomeAnnotationFile \
+    -r $gatkTmpDir/$fastqId.gatkAlleleReadCounts.csv \
+    -T $aseqTmpDir/$fastqId-train-set.fa.gz \
+    -R $aseqTmpDir/$fastqId-train-report.txt &
+
+python $projDir/scripts/asedlp quantify \
+    -v $vcfFile \
+    -i $sampleId \
+    -G $geneIdFile \
+    -s $genomeFastaFile \
+    -f $genomeAnnotationFile \
+    -r $gatkTmpDir/$fastqId.nondup.gatkAlleleReadCounts.csv \
+    -T $aseqTmpDir/$fastqId-nondup-train-set.fa.gz \
+    -R $aseqTmpDir/$fastqId-nondup-train-report.txt &
+
+wait
 EOF
-# } // asequan estimates ASE effects
+)
+echoInfo "$stepName was submitted: $AseqASEEstimationJobId ..."
+# } // aseq estimates ASE effects
 
 #
 ## Collect output and clean up {
 #
-mem=1G
+mem=500M
 cpus=1
-time=0:10:00
+time=0:5:00
 stepName=CollectOutputAndCleanup
-dependency=$afterok:$GatkASEReaderCounterJobId:
+dependency=$afterok:$AseqASEEstimationJobId
+if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
 CollectOutputAndCleanupJobId=$(sbatch $dependency \
     --mem=$mem \
     --time=$time \
     --cpus-per-task=$cpus \
     --job-name=$fastqId-$stepName \
-    --output=$workDir/logDir/%j-$fastqId-$stepName.log \
+    --output=$logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
-set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 
+set -Ee -o pipefail
+
 # Copy fastp reports to output directory.
-cp -fr $fastpTmpDir/*.{html,json} $fastpOptDir
+cp -fr $fastpTmpDir/$fastqId*.{html,json} $fastpOptDir
 
-# Copy WASP ASE read counts (including w/o duplications) to output directory.
-cp -fr $waspTmpDir/$fastqId.*.txt $waspOptDir
+# Copy GATK/ASEReadCounter outputs to output directory
+cp -fr $gatkTmpDir/$fastqId*.csv $gatkOptDir
 
-# Copy GATK/ASEReadCounter outputs to
-cp -fr $gatkTmpDir/$fastqId.*.{csv,txt} $gatkOptDir
+# Copy asedlp/quantify outputs to output directory
+cp -fr $aseqTmpDir/$fastqId*.{fa.gz,txt} $aseqOptDir
 
 # Remove fastq files and temporary directory (tmpDir/$fastqId)
 rm -fr $tmpDir/$fastqId
 rm -fr $tmpDir/$fastqId"_"R{1,2}.fq.gz
 EOF
 )
-
 echoInfo "$stepName was submitted. Job id: $CollectOutputAndCleanupJobId ..."
 # } // Collect output and clean up
 

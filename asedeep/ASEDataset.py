@@ -1,53 +1,50 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# File name   : ASEDataset.py
-# Author      : Zhenhua Zhang
-# E-mail      : zhenhua.zhang217@gmail.com
-# Created     : Mon 22 Jun 2020 11:16:49 AM CEST
-# Version     : v 0.1.0
-# License     : MIT
+# File name: ASEDataset.py
+# Author   : Zhenhua Zhang
+# E-mail   : zhenhua.zhang217@gmail.com
+# Created  : Mon 22 Jun 2020 11:16:49 AM CEST
+# License  : MIT
 #
 """A module to load and pre-process sequence matrix."""
 
-import gzip
 import math
 import logging
 
-from Bio import SeqIO
+import pyfaidx
 from torch.utils.data import Dataset
 from statsmodels.sandbox.stats.multicomp import multipletests
 
-from HelbertCurve import HelbertCurve
+from .HelbertCurve import HelbertCurve
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
-                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
-class MultipleTestAdjustMent(object):
+class MultipleTestAdjustMent:
     """Adjust p-values for multiple tests.
 
     This class is a dataset-wide transformer.
     """
-    def __init__(self, alpha: float=0.05, method: str="fdr_bh"):
+
+    def __init__(self, alpha: float = 0.05, method: str = "fdr_bh"):
         self.alpha = alpha
         self.method = method
 
     def __call__(self, dataset: list):
-        p_val_list = []
-        label_list = []
-        matrix_list = []
+        pval_pool = []
+        mtrx_pool = []
+        label_pool = []
 
         for matrix, (p_val, label) in dataset:
-            p_val_list.append(p_val)
-            label_list.append(label)
-            matrix_list.append(matrix)
+            pval_pool.append(p_val)
+            mtrx_pool.append(matrix)
+            label_pool.append(label)
 
-        p_val_list = multipletests(p_val_list, alpha=self.alpha, method=self.method)[1]
+        pval_pool = multipletests(pval_pool, alpha=self.alpha, method=self.method)
 
-        return tuple(zip(matrix_list, tuple(zip(p_val_list, label_list))))
+        return tuple(zip(mtrx_pool, tuple(zip(pval_pool[1], label_pool))))
 
 
-class ReshapeMatrixAndPickupLabel(object):
+class ReshapeMatrixAndPickupLabel:
     """Reshape the sequence matrix into a given size.
 
     This class is an element-wise transformer.
@@ -56,6 +53,7 @@ class ReshapeMatrixAndPickupLabel(object):
         Effects prone to allele B in the raw ASE quantification results,
         however, both PyTorch and TensorFlow require labels no less than 0.
     """
+
     def __init__(self, pthd=0.05):
         self.pthd = pthd
 
@@ -66,16 +64,15 @@ class ReshapeMatrixAndPickupLabel(object):
         length = int(math.sqrt(length * n_type_nucl))
 
         matrix = matrix.reshape((n_channel, length, length))
-        if labels[0] < self.pthd:
-            label = labels[1] + 1
-        else:
-            label = 1
+        label = labels[1] + 1 if labels[0] < self.pthd else 1
 
         return (matrix, label)
 
 
-class SeqToHelbertAndMakeLabel(object):
+class SeqToHelbertAndMakeLabel:
     """Convert sequence into matrix of Helbert curve and fit label to training.
+
+    This class is a dataset-wide transformer.
     """
 
     def __init__(self, pthd=0.05, show_pic=False):
@@ -90,16 +87,17 @@ class SeqToHelbertAndMakeLabel(object):
         else:
             label = 1
 
-        hc = HelbertCurve(sequence, **kwargs)
-        hc = hc.seq_to_hcurve()
+        hcurve = HelbertCurve(sequence, **kwargs).seq_to_hcurve()
 
         if self.show_pic:
-            hc = hc.hcurve_to_img()
+            hcurve = hcurve.hcurve_to_img()
 
-        return hc.get_onehot_hcurve(), label
+        return hcurve.get_onehot_hcurve(), label
 
 
 class ASEDataset(Dataset):
+    """ASE dataset.
+    """
     def __init__(self, gene_id, file_path_pool, element_trans=None,
                  dataset_trans=None):
         """
@@ -117,6 +115,7 @@ class ASEDataset(Dataset):
             implementation, the data will be loaded into memory and then further
             operation will be done.
         """
+
         self.gene_id = gene_id
         self.element_trans = element_trans
         self.dataset_trans = dataset_trans
@@ -129,25 +128,17 @@ class ASEDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.element_trans(self.dataset_pool[idx]) \
-                if self.element_trans else self.dataset_pool[idx]
+            if self.element_trans else self.dataset_pool[idx]
 
     def _load_data(self):
-        """Load dataset."""
+        # Load dataset.
         temp_list = []
         for idx in range(len(self)):
             file_path = self.file_path_pool[idx]
 
-            if file_path.endswith("gz"):
-                _open = gzip.open
-                _mode = "rt"
-            else:
-                _open = open
-                _mode = "r"
-
-            with _open(file_path, mode=_mode) as ipfh:
-                record = SeqIO.to_dict(SeqIO.parse(ipfh, "fasta"),
-                        key_function=lambda x: x.id.split("|")[1]) \
-                                .get(self.gene_id, None)
+            seq_pool = pyfaidx.Fasta(file_path)
+            record = [seq_pool[record_id] for record_id in seq_pool.keys()
+                      if self.gene_id in record_id]
 
             if record is None:
                 _err_msg = "No '{}' in '{}'".format(self.gene_id, file_path)
@@ -163,15 +154,20 @@ class ASEDataset(Dataset):
         return tuple(temp_list)
 
     def _items(self, idx=None, labels=True):
+        # Yield items.
         pos = 1 if labels else 0
         if idx is None:
-            for idx in range(len(self)):
-                yield self[idx][pos]
+            for _idx, _ in enumerate(self):
+                yield self[_idx][pos]
         else:
             yield self[idx][pos]
 
     def get_labels(self, idx=None):
+        '''Get labels.
+        '''
         return self._items(idx)
 
     def get_matrix(self, idx=None):
+        '''Get matrix.
+        '''
         return self._items(idx, False)

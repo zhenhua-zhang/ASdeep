@@ -8,10 +8,7 @@ import itertools as it
 import numpy as np
 import matplotlib.pyplot as plt
 
-from zutils import B2M
-
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
-                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
+from .zutils import B2M
 
 class HelbertCurve:
     def __init__(self, seq, kmers=4, biallele=True, seqorder="sm"):
@@ -192,7 +189,7 @@ class HelbertCurve:
         fig.set_tight_layout(True)
 
         save_path = "{}helbert_curve.{}".format(output_prefix, fmt)
-        # logging.warning("Please check \"{}\" for the pic".format(save_path))
+        logging.warning("Please check \"{}\" for the pic".format(save_path))
         fig.savefig(save_path)
 
         return self

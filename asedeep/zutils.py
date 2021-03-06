@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# File name : zutils.py
-# Author        : Zhenhua Zhang
-# E-mail        : zhenhua.zhang217@gmail.com
-# Created     : Mon 22 Jun 2020 11:25:03 AM CEST
-# Version     : v0.1.0
-# License     : MIT
-#
+# Author     : Zhenhua Zhang
+# E-mail     : zhenhua.zhang217@gmail.com
+# Created on : Mon 22 Jun 2020 11:25:03 AM CEST
+
 
 import sys
 import copy

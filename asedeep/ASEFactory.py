@@ -1,37 +1,31 @@
-"""ASE factory version 0.2.0
+'''ASE factory version 0.2.0
 
 TODO:
     1. In output FASTA file, only gene id is used for index. However, there
     could be duplicated records for one gene id. Therefore, mRNA id for the gene
     id should be used instead of gene id only.
-"""
+'''
 
-import textwrap
-import logging
-import gzip
-import math
-import pdb
-import sys
+# Built-in packages
 import os
+import math
+import gzip
+import logging
+import textwrap
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
-                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
-
-from collections import UserDict
-
+# Third-party packages
 import vcf
+import pandas
 import pyfaidx
 import gffutils
 
-import pandas as pd
-import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import betabinom, binom, chi2
 
-from zutils import cmp
-from zutils import M2B
+# Modules from this package
+from .zutils import cmp, M2B
 
-class ReadCountPool(UserDict):
+class ReadCountPool:
     """A class for Read counts.
     """
     def __init__(self):
@@ -52,9 +46,8 @@ class ReadCountPool(UserDict):
     def __len__(self):
         return len(self.data)
 
+    # Add counts
     def _pr_add(self, itvl_id: str, content: list, add_type="a1"):
-        """Add counts.
-        """
         type_pool = ["a1", "a2", "info"]
         if itvl_id not in self.data:
             self.data[itvl_id] = [[], [], []]
@@ -71,8 +64,7 @@ class ReadCountPool(UserDict):
         self._pr_add(itvl_id, info, add_type="info")
 
     def unpack(self):
-        """Unpack the object.
-        """
+        """Unpack the object."""
         a1_rc_pool, a2_rc_pool, info_pool = [], [], []
         for _, _value in self.data.items():
             a1_rc_pool.extend(_value[0])
@@ -82,7 +74,8 @@ class ReadCountPool(UserDict):
 
 
 class ASEeffectFactory:
-    """A factory for ORF sequence.
+    """Estimate the allele specific expression effects using likelihood ratio test under
+    Binomial / Beta-Binomial distribution.
 
     TODO:
         1. Not able to deal with meta-exons.
@@ -95,31 +88,27 @@ class ASEeffectFactory:
 
     @staticmethod
     def _pr_parse_rc(read_counts):
-        if isinstance(read_counts, (tuple, list)) and len(read_counts) >= 2:
+        if isinstance(read_counts, (tuple, list)) and len(read_counts) == 2:
             return read_counts, []
         elif isinstance(read_counts, ReadCountPool):
             return read_counts.unpack()
         else:
             raise TypeError("read_counts parameter should be tuple, list, or ReadCountPool")
 
+    # The likelihood function of Binomial distribution
     @staticmethod
     def _pr_bnllh(param, k_vec, n_vec):
-        """The likelihood function of Binomial distribution.
-        """
         lh_vec = [binom.logpmf(k, n, param) for k, n in zip(k_vec, n_vec)]
         return -sum(lh_vec)
 
     def bntest(self):
-        """Do Binomial test on given data.
-        """
+        """Do Binomial test on given data."""
         x_zero = 0.5
         k_vec = self._pr_get_k_vec()
         n_vec = self._pr_get_n_vec()
 
-        opt_results = minimize(
-            self._pr_bnllh, x_zero, args=(k_vec, n_vec),
-            method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8}
-        )
+        opt_results = minimize(self._pr_bnllh, x_zero, args=(k_vec, n_vec),
+                               method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8})
         self.optim_results["binomial"] = opt_results
 
         # _est_t = opt_results["x"]
@@ -131,13 +120,12 @@ class ASEeffectFactory:
         llr = - 2 * (estll - hypll)
         p_val = chi2.sf(llr, 1)
 
-        k_sum, n_sum = int(sum(k_vec)), int(sum(n_vec))
+        k_sum, n_sum = sum(k_vec), sum(n_vec)
         return llr, p_val, cmp(2 * k_sum, n_sum) # likelihood ratio, p-value, direction
 
+    # The likelihood function of Beta-Binomial distribution
     @staticmethod
     def _pr_bbllh(params, k_vec, n_vec):
-        """The likelihood function of Beta-Binomial distribution.
-        """
         if len(params) != 2:
             raise TypeError("The params should be a list with two elements.")
 
@@ -146,16 +134,13 @@ class ASEeffectFactory:
         return -sum(lh_vec)
 
     def bbtest(self):
-        """Do Beta-binomial test on given data.
-        """
+        """Do Beta-binomial test on given data."""
         x_zero = [0.5, 0.5]
         k_vec = self._pr_get_k_vec()
         n_vec = self._pr_get_n_vec()
 
-        opt_results = minimize(
-            self._pr_bbllh, x_zero, args=(k_vec, n_vec),
-            method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8}
-        )
+        opt_results = minimize(self._pr_bbllh, x_zero, args=(k_vec, n_vec),
+                               method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8})
         self.optim_results["beta_binomial"] = opt_results
 
         # _est_a, _est_b = opt_results["x"]
@@ -167,7 +152,7 @@ class ASEeffectFactory:
         llr = - 2 * (estll - hypll) # The likelihood value is timed by -1
         p_val = chi2.sf(llr, 1)
 
-        k_sum, n_sum = int(sum(k_vec)), int(sum(n_vec))
+        k_sum, n_sum = sum(k_vec), sum(n_vec)
         return llr, p_val, cmp(2 * k_sum, n_sum) # likelihood ratio, p-value, direction
 
     def _pr_get_k_vec(self):
@@ -179,6 +164,7 @@ class ASEeffectFactory:
     def chi_square_test(self):
         """Using a Chi-square test on given data.
         """
+        self.__str__
         return NotImplemented
 
 
@@ -190,8 +176,8 @@ class ASEFactory:
 
     variant_pool = None
     sequence_pool = None
-    readcount_pool = None
     gene_features = None
+    readcount_pool = None
 
     def __init__(self, args):
         super(ASEFactory, self).__init__()
@@ -215,7 +201,8 @@ class ASEFactory:
             raise FileNotFoundError("No genome sequence file was given or it's not accessible!")
 
         if self.args.ase_readcount_file:
-            self.ase_readcounts = pd.read_csv(self.args.ase_readcount_file, sep=' ')
+            self.ase_readcounts = pandas.read_csv(self.args.ase_readcount_file, sep=None,
+                                                  engine='python')
         else:
             raise FileNotFoundError("No ASE read counts file was given or it's not accessible!")
 
@@ -229,11 +216,9 @@ class ASEFactory:
         else:
             raise FileNotFoundError("No gene feature file was given or it's not accessible!")
 
-        self._parse_gene_ids()
-
-    def _parse_gene_ids(self):
         self._gene_ids = self.args.gene_ids + self._parse_gene_id_file()
 
+    # Gene id files
     def _parse_gene_id_file(self):
         if self.args.gene_id_file:
             with open(self.args.gene_id_file) as gifh:
@@ -241,6 +226,7 @@ class ASEFactory:
             return ids
         return []
  
+    # Generate genomic intervals
     def _pr_get_genome_itvl(self, gene_id, featuretype="transcript", which_mrna=None):
         # Get genomic interval for the given gene_id
         mrna_pool = self.gene_features.children(gene_id, featuretype=featuretype)
@@ -261,36 +247,31 @@ class ASEFactory:
         self.mrna_pool[gene_id] = mrna
         self.exon_pool[gene_id] = exon_pool
 
+    # Get variants in the genomic interval. 0-based
     def _pr_get_variants(self, chrom, start, end) -> vcf.Reader:
-        # Get variants in the genomic interval
-        # 0-based
-        return self.variant_pool.fetch(chrom, start, end)
+        return self.variant_pool.fetch(chrom, start-1, end)
 
-    def _pr_get_sequence(self, chrom, start, end) -> pyfaidx.Fasta:
-        # Get sequence in the genomic interval
-        # 1-based
+    # Get sequence in the genomic interval. 1-based
+    def _pr_get_sequence(self, chrom, start, end):
         return self.sequence_pool.get_seq(chrom, start, end)
 
-    def _pr_get_readcounts(self, chrom, start, end) -> pd.DataFrame:
-        # Get the read counts in the genomic interval
-        # TODO: check the WASP manual to determine x-based
-        # pdb.set_trace()
-        return self.ase_readcounts.query('chrom==@chrom & @start <= pos & pos <= @end')
+    # Get the read counts in the genomic interval
+    def _pr_get_readcounts(self, chrom, start, end) -> pandas.DataFrame:
+        return (self.ase_readcounts
+                .query('contig=={} & {}<=position & position<={}'.format(chrom, start, end)))
 
+    # Fetch ambiguous
     @staticmethod
     def _pr_encode_bnt(gntp):
         return M2B.get(gntp, "N")
 
+    # Generate allelic sequence using ambiguous base
     def _pr_gen_ase_seq(self, itvl: gffutils.Feature, shift=5e2):
-        #pdb.set_trace()
         chrom, start, end, strand = itvl.chrom, itvl.start, itvl.end, itvl.strand
         if strand == '+':
             start, end = start - shift, start
-        elif strand == '-':
-            start, end = end, end + shift
         else:
-            logging.warning('No strand found, skip interval: {}:{}-{}'.format(chrom, start, end))
-            return None
+            start, end = end, end + shift
 
         sequence = self._pr_get_sequence(chrom, start, end)
         variants = self._pr_get_variants(chrom, start, end)
@@ -305,31 +286,39 @@ class ASEFactory:
 
                 insert_pos = vcf_record.start - start
                 amb_sequence = sequence[:insert_pos].seq + amb_base + sequence[insert_pos+1:].seq
-            else:
-                logging.warning('Variant not phased, skip: {}:{}'.format(chrom, vcf_record.end))
 
         return amb_sequence
 
-    # TODO: rewrite this function
+    # Generate a ReadCountsPool.
     def _pr_gen_rcp(self, exon_pool):
-        # Generate a ReadCountsPool.
-        # TODO: check x-based
+        def _get_var_gt(key, vmap):
+            call = vmap.get((str(key.loc['contig']), key.loc['position']))
+            if call:
+                return call.data.GT
+
+            return call
+
         rcp = ReadCountPool()
         for exon_itvl in exon_pool:
-            exon_chrom, exon_start, exon_stop = exon_itvl.seqid, exon_itvl.start - 1, exon_itvl.stop
-            _id = (exon_chrom, exon_start, exon_stop)
+            exon_chrom, exon_start, exon_end = exon_itvl.seqid, exon_itvl.start, exon_itvl.stop
 
-            exon_vars = self._pr_get_readcounts(exon_chrom, exon_start, exon_stop)
-            if exon_vars.empty:
+            exon_rc = self._pr_get_readcounts(exon_chrom, exon_start, exon_end)
+            if exon_rc.empty:
                 continue
 
-            het_exon_vars = exon_vars.loc[exon_vars.apply(lambda x: x['gt'] in ['0|1', '1|0'], axis=1), :]
+            # Fetch variant information
+            vmap = {(var.CHROM, var.POS): var.genotype(self._sample_id)
+                    for var in self._pr_get_variants(exon_chrom, exon_start, exon_end)}
+            # Add variant information to the allelic read count DataFrame
+            exon_rc.insert(7, 'genotype', exon_rc.apply(_get_var_gt, 1, vmap=vmap))
+            # Only working on heterzygous loci
+            het_exon_vars = exon_rc.loc[exon_rc['genotype'].apply(lambda x: x in ['0|1', '1|0']), :]
+
             if het_exon_vars.empty:
                 continue
 
-            # pdb.set_trace()
             nz_a1_counts, nz_a2_counts, nz_het_loci = [], [], []
-            for _, (chrom, pos, ref, alt, gt, ref_rc, alt_rc, _) in het_exon_vars.iterrows():
+            for _, (chrom, pos, snpid, ref, alt, ref_rc, alt_rc, gt, *_) in het_exon_vars.iterrows():
                 if gt == '0|1':
                     nz_a1_counts.append(ref_rc)
                     nz_a2_counts.append(alt_rc)
@@ -337,40 +326,41 @@ class ASEFactory:
                     nz_a1_counts.append(alt_rc)
                     nz_a2_counts.append(ref_rc)
 
-                nz_het_loci.append([[chrom, pos, ref, alt], [gt[0], gt[-1]]])
+                if snpid == '.':
+                    snpid = str(chrom) + ':' + str(pos)
 
+                nz_het_loci.append([[chrom, pos, snpid, ref, alt], [gt[0], gt[-1]]])
+
+            _id = (exon_chrom, exon_start, exon_end)
             rcp.add_a1_rc(_id, nz_a1_counts)
             rcp.add_a2_rc(_id, nz_a2_counts)
             rcp.add_loci_info(_id, nz_het_loci)
 
         return rcp
 
-    def _pr_gen_ase(self, exon_pool=None, mthd="bn"):
-        """Generate allele-specific expression effects from read counts.
-        """
+    # Generate allele-specific expression effects from read counts.
+    def _pr_gen_ase(self, exon_pool=None):
         rcp = self._pr_gen_rcp(exon_pool)
-        # pdb.set_trace()
+
         if len(rcp) != 0:
             aefact = ASEeffectFactory(rcp)
-            if mthd == "bb":
-                return aefact.bbtest(), aefact.read_counts
-            elif mthd == "bn":
-                return aefact.bntest(), aefact.read_counts
+            return aefact.bntest(), aefact.bbtest(), aefact.read_counts
 
         return None
 
 
     def gen_gnm_itvl(self, **kwargs):
-        """Generate genomic intervals from Ensembl gene IDs.
-        """
+        """Generate genomic intervals from Ensembl gene IDs."""
         for _id in self._gene_ids:
             self._pr_get_genome_itvl(_id, **kwargs)
 
         return self
 
-    def gen_seq(self, shift_factor=1e3):
-        """Generage regulatory sequence matrix.
-        """
+    def gen_seq(self, shift_factor=0):
+        """Generage regulatory sequence matrix."""
+        if shift_factor <= 0:
+            shift_factor = self.args.shift_factor
+
         shift = 2 * math.ceil(math.sqrt(shift_factor)) ** 2
 
         if self.mrna_pool:  # Not empty
@@ -382,12 +372,11 @@ class ASEFactory:
 
         return self
 
-    def gen_ase(self, mthd="bn"):
-        """Generate ASE effects.
-        """
+    def gen_ase(self):
+        """Generate ASE effects."""
         if self.exon_pool:  # Not empty
             self.ase_pool = {
-                gene_id: self._pr_gen_ase(exon_pool, mthd)
+                gene_id: self._pr_gen_ase(exon_pool)
                 for gene_id, exon_pool in self.exon_pool.items()}
         else:
             logging.warn("The exon_pool is empty, use gen_gnm_itvl() first.")
@@ -403,32 +392,32 @@ class ASEFactory:
             else:
                 opt_file = self._sample_id + ".ase_report.txt"
 
-        header = "\t".join(["sample_id", "gene_id", "llh_ratio", "p_val", "ase_direction",
-                            "snp_info", "snp_phase", "allele_counts"])
+        header = "\t".join(["sample_id", "gene_id", "bn_llr", "bn_pval", "bb_llr", "bb_pval",
+                            "ase_direction", "snp_info", "snp_phase", "allele_counts"])
         with open(opt_file, "wt") as rfh:
             rfh.write(header + "\n")
 
-            for gene_id, ase_effect in self.ase_pool.items():
+            for geneid, ase_effect in self.ase_pool.items():
                 if ase_effect:
-                    (llr, p_val, direction), (a1_rc, a2_rc, snp_info) = ase_effect
-                    snp_rc_chain, snp_pos_chain, snp_phase_chain = ["A1|A2:"], ["CH,PS,REF>ALT:"], ["A1|A2:"]
-                    # pdb.set_trace()
-                    for _a1_rc, _a2_rc, ((chrom, pos, ref, alt), (a1_gntp, a2_gntp)) in zip(a1_rc, a2_rc, snp_info):
-                        snp_pos = str(chrom) + "," + str(pos) + "," + ref + ">" + alt
-                        snp_phase = str(a1_gntp) + "|" + str(a2_gntp)
+                    (bnlr, bnpv, _), (bblr, bbpv, dire), (a1_rc, a2_rc, snp_info) = ase_effect
+
+                    _rc_chain, _pos_chain, _phase_chain = ["A1|A2:"], ["CH,PS,ID,REF>ALT:"], ["A1|A2:"]
+                    for _a1_rc, _a2_rc, ((chrom, pos, snpid, ref, alt), (a1gt, a2gt)) in zip(a1_rc, a2_rc, snp_info):
+                        snp_pos = ','.join([str(chrom), str(pos), snpid, ref]) + ">" + alt
+                        snp_phase = str(a1gt) + "|" + str(a2gt)
                         snp_rc = str(_a1_rc) + "|" + str(_a2_rc)
 
-                        snp_rc_chain.append(snp_rc)
-                        snp_pos_chain.append(snp_pos)
-                        snp_phase_chain.append(snp_phase)
+                        _rc_chain.append(snp_rc)
+                        _pos_chain.append(snp_pos)
+                        _phase_chain.append(snp_phase)
 
-                    info_list_1 = [self._sample_id, gene_id, str(llr), str(p_val), str(direction)]
-                    info_list_2 = [x[0] + ";".join(x[1:]) for x in [snp_pos_chain, snp_phase_chain, snp_rc_chain]]
+                    info_list_1 = [self._sample_id, geneid, bnlr, bnpv, bblr, bbpv, dire]
+                    info_list_2 = [x[0] + ";".join(x[1:]) for x in [_pos_chain, _phase_chain, _rc_chain]]
                 else:
-                    info_list_1 = [self._sample_id, gene_id, "NA", "NA", "NA"]
+                    info_list_1 = [self._sample_id, geneid] + ["NA"] * 5
                     info_list_2 = ["NA"] * 4
 
-                est_result = "\t".join(info_list_1 + info_list_2)
+                est_result = "\t".join([str(x) for x in info_list_1 + info_list_2])
                 rfh.write(est_result + "\n")
 
         return self
@@ -455,13 +444,10 @@ class ASEFactory:
         _opt_str = ""
         _sample_id = self._sample_id
         for _gene_id in self.seq_pool.keys():
-            _ntseq = self.seq_pool[_gene_id]
-            _ase = self.ase_pool[_gene_id]
-
-            _ase_effect = "{}|{}".format(*list(_ase[0][1:])) if _ase else "1|0"
-            _nt_seq_fold = "\n".join(textwrap.wrap(_ntseq))
-
-            _opt_str += ">{}|{}|{}\n{}\n".format(_sample_id, _gene_id, _ase_effect, _nt_seq_fold)
+            _ntseq, _ase = self.seq_pool[_gene_id], self.ase_pool[_gene_id]
+            _ase_effect = "{}|{}|{}".format(_ase[0][1], *_ase[1][1:]) if _ase else "1|1|0"
+            _opt_str += ">{}|{}|{}\n{}\n".format(_sample_id, _gene_id, _ase_effect,
+                                                 "\n".join(textwrap.wrap(_ntseq)))
 
         if save_fmt == "fa":
             _open = open
@@ -478,4 +464,4 @@ class ASEFactory:
 
 
 if __name__ == "__main__":
-    print("[W]: This module should not be executed directly.", file=sys.stderr)
+    logging.warning("This module should not be executed directly.")

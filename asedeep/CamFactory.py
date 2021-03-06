@@ -4,12 +4,7 @@
 """An implementation of Class Activation Mapping (CAM) based on 
 
 Reference: https://github.com/zhoubolei/CAM/blob/master/pytorch_CAM.py
-
-./asedlp cam --gene-id ENSG00000161570 --file-path ../../workdir/optdir/**/aseOptdir/train_set/*_17_matrix_and_ase.npz --model-state ../../outputs/models/version_0.1.0/ENSG00000161570/20200621_184849.model_state.ptz --save-path test/output_pic
 """
-
-import pdb
-import logging
 
 import cv2
 import torch
@@ -21,10 +16,8 @@ from torchvision import models
 from torch.autograd import Variable
 from torch.nn import functional as func
 
-from ASEDataset import ASEDataset, ReshapeMatrixAndPickupLabel, MultipleTestAdjustMent
+from .ASEDataset import ASEDataset, ReshapeMatrixAndPickupLabel, MultipleTestAdjustMent
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
-                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 class CamFactory:
     def __init__(self, net=None, gene_id=None, file_path=None, feature_layer="layer4"):

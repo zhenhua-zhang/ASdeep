@@ -1,22 +1,15 @@
 """ASE report.
 """
 
-# import sys
-import pdb
-# import logging
-# import numpy as np
-
 import os
 import math
 import logging
 
-import pandas as pd
+import pandas
 import seaborn as sbn
 import gffutils as gut
 import matplotlib.pyplot as plt
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
-                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 class ASEReport:
     """A class to process ASE report.
@@ -42,20 +35,20 @@ class ASEReport:
         """
         sep = kwargs.get("sep", "\t")
         use_cols = kwargs.get("usecols", None)
-        dtfm_list = [pd.read_csv(file_path, sep=sep, usecols=use_cols) for file_path in self.file_path_list]
+        dtfm_list = [pandas.read_csv(file_path, sep=sep, usecols=use_cols)
+                     for file_path in self.file_path_list]
 
         if dtfm_list:
-            return pd.concat(dtfm_list, ignore_index=True)
+            return pandas.concat(dtfm_list, ignore_index=True)
 
         logging.warning("The dataframe list is empty.")
         return None
 
     @staticmethod
-    def _pr_check_read_count(ase_rec: pd.Series, gross_count=10, allelic_count=3):
+    def _pr_check_read_count(ase_rec: pandas.Series, gross_count=10, allelic_count=3):
         allele_count_str = ase_rec["allele_counts"]
         allele_count_lst = allele_count_str.split(":")[1].split(";")
 
-        # hete_num = len(allele_count_lst)
         a1_sum, a2_sum = 0, 0
         for count_pair in allele_count_lst:
             a1_count, a2_count = count_pair.split("|")
@@ -69,7 +62,7 @@ class ASEReport:
         return gene_id, gene.chrom, gene.start, gene.end
 
     def _pr_p_val_matrix(self, max_na_per_gene=1500):
-        """Get P values."""
+        # Get P values.
         merged_dtfm = self._pr_join_dtfm()
         if merged_dtfm is not None:
             pvm_raw = (merged_dtfm
@@ -77,7 +70,6 @@ class ASEReport:
                        .pivot(index="gene_id", columns="sample_id"))
 
             # Remove genes without herterozygous locus in `max_na_per_gene` individuals at maximum
-            # pdb.set_trace()
             pvm_by_coord = (pvm_raw.loc[pvm_raw.isna().sum(axis=1) < max_na_per_gene, :].fillna(1))
 
             gene_coord = [self._pr_fetch_gene_coord(gene_id) for gene_id in pvm_by_coord.index]
@@ -101,11 +93,12 @@ class ASEReport:
         try:
             grid = sbn.clustermap(p_val_matrix, figsize=fig_size, cmap="Greens")
         except:
-            logging.warning("Failed to do cluster for row or columns, try again without cluster")
             try:
-                grid = sbn.clustermap(p_val_matrix, figsize=fig_size, cmap="Greens", row_cluster=False, col_cluster=False)
+                logging.warning("Failed to cluster rows or columns, try again without cluster.")
+                grid = sbn.clustermap(p_val_matrix, figsize=fig_size, cmap="Greens",
+                                      row_cluster=False, col_cluster=False)
             except:
-                logging.error("Failed to do cluster, skip heatmap")
+                logging.error("Failed to do cluster, skip heatmap.")
                 grid = None
 
         return grid
@@ -171,7 +164,8 @@ class ASEReport:
             ant_db_name = os.path.splitext(self.genome_annot)[0] + ".db"
 
         if not os.path.exists(ant_db_name):
-            gut.create_db(self.genome_annot, ant_db_name, disable_infer_transcripts=True, disable_infer_genes=True)
+            gut.create_db(self.genome_annot, ant_db_name, disable_infer_transcripts=True,
+                          disable_infer_genes=True)
 
         self.ant_sql = gut.FeatureDB(ant_db_name)
         self.pvm_raw, self.pvm_by_coord = self._pr_p_val_matrix(max_na_per_gene)
@@ -197,7 +191,7 @@ class ASEReport:
 
         return self
 
-    def visualize(self, fig_fmt: str="pdf"):
+    def visualize(self, fig_fmt: str = "pdf"):
         """Draw figures to show the result.
         """
         logging.info("Visualize")

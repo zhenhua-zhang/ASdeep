@@ -2,11 +2,12 @@
 **/test/
 
 _archived/
-rnaseqpl/configs/
 
 **/*.npz
+**/*.pyc
+**/__pycached__/
 .pylintrc
 .rbcsignore
 .env/
 .idea/
-*.pyc
+.vscode/

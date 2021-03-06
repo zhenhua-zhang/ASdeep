@@ -7,9 +7,9 @@ import unittest
 import numpy as np
 
 try:
-    from ASEFactory import ASEFactory
-    from ASEDataset import ASEDataset, SeqToHelbertAndMakeLabel
-    from HelbertCurve import HelbertCurve
+    from .ASEFactory import ASEFactory
+    from .ASEDataset import ASEDataset, SeqToHelbertAndMakeLabel
+    from .HelbertCurve import HelbertCurve
 except ImportError as ime:
     print("ImportError: {}".format(ime), file=sys.stderr)
     sys.exit()
