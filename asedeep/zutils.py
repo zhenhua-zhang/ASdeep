@@ -14,42 +14,30 @@ from collections import UserDict
 
 # Reference: https://genomevolution.org/wiki/index.php/Ambiguous_nucleotide
 M2B = { # monoallelic base-pair to biallelic base.
-    "AA": "A", "AC": "M", "AG": "R", "AT": "W",
-    "CA": "m", "CC": "C", "CG": "S", "CT": "Y",
-    "GA": "r", "GC": "s", "GG": "G", "GT": "K",
-    "TA": "w", "TC": "y", "TG": "k", "TT": "T",
-    "NN": "N"
+    'AA': 'A', 'AC': 'M', 'AG': 'R', 'AT': 'W',
+    'CA': 'm', 'CC': 'C', 'CG': 'S', 'CT': 'Y',
+    'GA': 'r', 'GC': 's', 'GG': 'G', 'GT': 'K',
+    'TA': 'w', 'TC': 'y', 'TG': 'k', 'TT': 'T',
+    'NN': 'N'
 }
-
-# M2B = { # monoallelic base-pair to biallelic base.
-#     (65, 65): "A", (65, 67): "M", (65, 71): "R", (65, 84): "W",
-#     (67, 65): "m", (67, 67): "C", (67, 71): "S", (67, 84): "Y",
-#     (71, 65): "r", (71, 67): "s", (71, 71): "G", (71, 84): "K",
-#     (84, 65): "w", (84, 67): "y", (84, 71): "k", (84, 84): "T",
-#     (78, 78): "N",
-# }
 
 B2M = { # Biallelic base to monoallelic base-pair
-    "A": "AA", "M": "AC", "R": "AG", "W": "AT",
-    "m": "CA", "C": "CC", "S": "CG", "Y": "CT",
-    "r": "GA", "s": "GC", "G": "GG", "K": "GT",
-    "w": "TA", "y": "TC", "k": "TG", "T": "TT",
-    "N": "NN"
+    'A': 'AA', 'M': 'AC', 'R': 'AG', 'W': 'AT',
+    'm': 'CA', 'C': 'CC', 'S': 'CG', 'Y': 'CT',
+    'r': 'GA', 's': 'GC', 'G': 'GG', 'K': 'GT',
+    'w': 'TA', 'y': 'TC', 'k': 'TG', 'T': 'TT',
+    'N': 'NN'
 }
 
 
-def print_arguments(arguments, fwidth=None, to_head=("subcommand",)):
-    """Print artuments from command lines"""
-    print("Arguments for current run: ", file=sys.stderr)
+def print_arguments(arguments, fwidth: int=0, to_head=('subcommand',)):
+    '''Print artuments from command lines'''
+    print('Arguments for current run: ', file=sys.stderr)
     _dict = vars(arguments)
-    _pair = [
-        (_dst, _arg) for _dst, _arg in _dict.items() if _dst not in to_head
-    ]
+    _pair = [(_dst, _arg) for _dst, _arg in _dict.items() if _dst not in to_head]
     _pair = sorted(_pair, key=lambda x: len(x[0]))
 
-    _to_head = [
-        (_dst, _arg) for _dst, _arg in _dict.items() if _dst in to_head
-    ]
+    _to_head = [(_dst, _arg) for _dst, _arg in _dict.items() if _dst in to_head]
 
     for prior in _to_head:
         _pair.insert(0, prior)
@@ -59,20 +47,17 @@ def print_arguments(arguments, fwidth=None, to_head=("subcommand",)):
 
     for _dst, _arg in _pair:
         if _arg is None:
-            _arg = "None"
+            _arg = 'None'
 
         if isinstance(_arg, (list, tuple)):
-            _arg = ", ".join(map(str, _arg))
+            _arg = ', '.join(map(str, _arg))
 
-        print(
-            "    {d: <{w}}: {a: <{w}}".format(d=_dst, a=_arg, w=fwidth),
-            file=sys.stderr
-        )
+        print('    {d: <{w}}: {a: <{w}}'.format(d=_dst, a=_arg, w=fwidth), file=sys.stderr)
 
 
 class SmartDict(UserDict):
-    """Container for the data set.
-    """
+    '''Container for the data set.
+    '''
 
     def __init__(self):
         super().__init__()
@@ -102,12 +87,12 @@ def cmp(a, b):
 
 
 def flatten(l):
-    """Flatten a list recursively.
+    '''Flatten a list recursively.
     Args:
         l (list): The list to be flatten.
     Returns:
         out_list (list): The flatten list.
-    """
+    '''
     out_list = []
     for x in l:
         if isinstance(x, (list, tuple)):
@@ -120,10 +105,10 @@ def flatten(l):
 def insert_or_append(dict1, dictlike2):
     dict1 = copy.deepcopy(dict1)
 
-    if not hasattr(dictlike2, "__getitem__") or not hasattr(dictlike2, "items"):
+    if not hasattr(dictlike2, '__getitem__') or not hasattr(dictlike2, 'items'):
         raise AttributeError(
-            "dictlike2 should at least has "
-            "`__getitem__()`, aka `[]`, methods and itesm()")
+            'dictlike2 should at least has '
+            '`__getitem__()`, aka `[]`, methods and items()')
 
     for key, val in dictlike2.items():
         if key in dict1:
@@ -133,34 +118,6 @@ def insert_or_append(dict1, dictlike2):
 
     return dict1
 
-# def split_train_test(dataset: tf.data.Dataset, test_prop: float = 0.3,
-#         shuffle: bool = True, shuf_buf_size: int = 32,
-#         batch_size: int = 16) -> (tf.data.Dataset, tf.data.Dataset):
-#     """Split a dataset into train and test dataset.
-# 
-#     Source: https://stackoverflow.com/questions/51125266/how-do-i-split-tensorflow-datasets
-#     """
-#     border = int(10 * test_prop)
-# 
-#     recover = lambda x, y: y
-#     is_test = lambda x, y: x % 10 < border
-#     is_train = lambda x, y: x % 10 >= border
-# 
-#     if shuffle:
-#         dataset = dataset.shuffle(shuf_buf_size)
-#     train_dtst = dataset.enumerate() \
-#             .filter(is_train) \
-#             .map(recover) \
-#             .batch(batch_size) \
-#             .cache()
-# 
-#     test_dtst = dataset.enumerate() \
-#             .filter(is_test) \
-#             .map(recover) \
-#             .batch(batch_size) \
-#             .cache()
-# 
-#     return train_dtst, test_dtst
 
 def make_gif(fp_in, fp_out, duration=400, loop=0):
     import glob
@@ -169,7 +126,7 @@ def make_gif(fp_in, fp_out, duration=400, loop=0):
     try:
         fp_in_imgs = glob.glob(fp_in)
         img, *imgs = [Image.open(f) for f in sorted(fp_in_imgs)]
-        img.save(fp=fp_out, format="GIF", append_images=imgs, save_all=True,
+        img.save(fp=fp_out, format='GIF', append_images=imgs, save_all=True,
                 duration=duration, loop=loop)
     except ValueError as err:
         print(err)
@@ -177,15 +134,12 @@ def make_gif(fp_in, fp_out, duration=400, loop=0):
 
 # this code is copied from statsmodel source code, to avoid installation of statsmodel for computing fdr-corrected p-values
 # link: http://statsmodels.sourceforge.net/ipdirective/_modules/scikits/statsmodels/sandbox/stats/multicomp.html
-
 def ecdf(x):
-    '''no frills empirical cdf used in fdrcorrection
-    '''
+    '''no frills empirical cdf used in fdrcorrection'''
     nobs = len(x)
     return np.arange(1,nobs+1)/float(nobs)
 
 def fdrcorrection(pvals, alpha, method='indep'):
-
     '''pvalue correction for false discovery rate
     This covers Benjamini/Hochberg for independent or positively correlated and
     Benjamini/Yekutieli for general or negatively correlated tests. Both are

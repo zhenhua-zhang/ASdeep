@@ -43,13 +43,14 @@
 #
 ## WASP (v0.3.4) dependencies:
 #
-# Python 3.6.3
+# Python 3.7.x
 # Python packages:
-#   - numexpr 2.7.1
-#   - numpy 1.19.4
-#   - pysam 0.16.0.1
-#   - scipy 1.5.4
-#   - tables 3.6.1
+#   - numpy==1.19.4
+#   - pandas==1.2.3
+#   - scipy==1.5.4
+#   - pysam==0.16.0.1
+#   - pyfaidx==0.5.9.5
+#   - PyVCF==0.6.8
 
 #
 ## Meta config {
@@ -131,9 +132,6 @@ echoHelp() {
 
 $ASEPL_FILENAME, Version ${ASEPL_VERSION:=UNKNOWN}
 
-It is recommended to use the a configuration file instead of commandline
-arguments and flags. Please check the \`template.conf\` file for more information.
-
 Help:
   -c, --conf     Required.
     The confituration file to supply values for the variables
@@ -149,7 +147,7 @@ EOF
 # } // Utilities
 
 #
-## CLI options { TODO: plan to use a config file
+## CLI options {
 #
 opt=$(getopt -o "c:hv" -l "conf:,help,version" -- "$@")
 eval set -- $opt
@@ -216,9 +214,16 @@ done
 # # Gene ids
 # geneIdFile=$projDir/inputs/Ensembl_references/protein_coding_gene_id.txt
 # 
-# # Python virtual environment
+# # Tools versions, Python virtual env
 # pyEnv=~/Documents/projects/wp_ase_dlp/scripts/.env
-# 
+# GCCVer=GCC/7.3.0-2.30
+# GATKVer=GATK/4.1.4.1-Java-8-LTS
+# HDF5Ver=HDF5/1.8.14-foss-2018b
+# STARVer=STAR/2.6.1c-foss-2018b
+# PythonVer=Python/3.7.4-GCCcore-7.3.0-bare
+# BCFtoolsVer=BCFtools/1.11-GCCcore-7.3.0
+# SAMtoolsVer=SAMtools/1.9-foss-2018b
+
 # # Job dependency
 afterok="--dependency=afterok"  # XXX: the colon after the afterok is maully added
 # # } // Config
@@ -226,6 +231,7 @@ afterok="--dependency=afterok"  # XXX: the colon after the afterok is maully add
 #
 ## Create the working directory tree
 #
+# TODO: Some directories are not necessary
 mkdir -p $logDir \
     $tmpDir/$fastqId/{fastp,star,wasp,gatk,aseq}TmpDir \
     $optDir/$fastqId/{fastp,star,wasp,gatk,aseq}OptDir \
@@ -259,7 +265,7 @@ set -Ee -o pipefail
 
 mkdir -p $workDir/genomeDir
 
-module load STAR/2.6.1c-foss-2018b
+module load $STARVer
 module list
 
 STAR \
@@ -284,7 +290,7 @@ if [ -d $snpH5dbDir ]; then
 else
     mem=5G
     cpus=1
-    time=1:59:00
+    time=3:59:00
     WaspCreateSnpHdf5DatabaseJobId=$(sbatch \
         --mem=$mem \
         --time=$time \
@@ -300,7 +306,7 @@ mkdir -p $snpH5dbDir
 mkdir -p $tmpDir/snpH5dbTmpDir
 
 # Split the VCF file by chromosome
-module load BCFtools
+module load $BCFtoolsVer
 module list
 
 ## Index the VCF file, if the default one does not exist. Make SURE you have write permission.
@@ -319,7 +325,7 @@ seq 1 22 | xargs \
 
 # Generate SNP HDF5 database
 module purge
-module load HDF5/1.8.14-foss-2018b
+module load $HDF5Ver
 module list
 ~/tools/bin/snp2h5 \
     --chrom $chromInfoFile \
@@ -336,13 +342,14 @@ EOF
 echoInfo "$stepName was submitted: $WaspCreateSnpHdf5DatabaseJobId ..."
 fi
 # } // Generate SNP HDF5 database for WASP
+# exit
 
 #
 ## FASTP: Preprocessing fastq files. {
 #
-mem=3G
+mem=2G
 cpus=1
-time=0:19:00
+time=0:59:00
 stepName=FastpPreproc
 dependency=$afterok
 if [[ $STARGenomeIndexJobId != '' ]]; then
@@ -365,7 +372,7 @@ fastpPreprocJobId=$(sbatch $dependency \
 set -Ee -o pipefail
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 
-module load GCC/7.3.0-2.30 # fastp was compiled using GCC v7.3.0
+module load $GCCVer # fastp was compiled using GCC v7.3.0
 module list
 
 # add a CLI option to fastq files
@@ -395,13 +402,14 @@ echoInfo $stepName was submitted: $fastpPreprocJobId ...
 #
 ## STAR: Mapping reads to genome {
 #
-mem=40G  # XXX: For human genome, it requires at least 40G memory.
-cpus=5
-time=0:29:00
+mem=35G  # XXX: For human genome, it requires at least 40G memory.
+cpus=4
+time=0:59:00
 stepName=STARMapping
 dependency=$afterok:$fastpPreprocJobId
 if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
 STARMappingJobId=$(sbatch $dependency \
+    --qos=priority \
     --mem=$mem \
     --time=$time \
     --cpus-per-task=$cpus \
@@ -413,7 +421,7 @@ STARMappingJobId=$(sbatch $dependency \
 set -Ee -o pipefail
 
 # Mapping
-module load STAR/2.6.1c-foss-2018b
+module load $STARVer
 module list
 
 STAR --runMode alignReads \
@@ -426,7 +434,7 @@ STAR --runMode alignReads \
     --outFileNamePrefix $starTmpDir/$fastqId.
 
 # Index the output BAM file
-module load SAMtools/1.9-foss-2018b
+module load $SAMtoolsVer
 module list
 
 # Add read group information
@@ -448,9 +456,9 @@ echoInfo "$stepName was submitted: $STARMappingJobId ..."
 #
 ## WASP: Find intersected SNPs {
 #
-mem=6G
+mem=15G
 cpus=1
-time=0:59:00
+time=1:59:00
 stepName=WASPRMBFindIntersectedSnps
 dependency=$afterok:$STARMappingJobId
 if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
@@ -465,7 +473,7 @@ WaspRMBFindIntersectedSnpsJobId=$(sbatch $dependency \
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 set -Ee -o pipefail
 
-module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+module load $HDF5Ver $PythonVer
 module list
 
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
@@ -486,7 +494,7 @@ mv -f $waspTmpDir/$fastqId.to.remap.bam $waspTmpDir/$fastqId.to.remap.sam
 
 # Convert the SAM into BAM. Note: find_intersecting_snps.py output SAM not BAM
 module purge
-module load SAMtools
+module load $SAMtoolsVer
 module list
 
 samtools view -hbo $waspTmpDir/$fastqId.keep.bam $waspTmpDir/$fastqId.keep.sam
@@ -501,12 +509,13 @@ echoInfo "$stepName was submitted: $WaspRMBFindIntersectedSnpsJobId ..."
 ## STAR: Remapping by STAR for WASP {
 #
 mem=40G
-cpus=2
-time=0:29:00
+cpus=1
+time=0:59:00
 stepName=WASPRMBRemapping
 dependency=$afterok:$WaspRMBFindIntersectedSnpsJobId
 if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
 WaspRMBRemappingJobId=$(sbatch $dependency \
+    --qos=priority \
     --mem=$mem \
     --time=$time \
     --cpus-per-task=$cpus \
@@ -517,7 +526,7 @@ WaspRMBRemappingJobId=$(sbatch $dependency \
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 set -Ee -o pipefail
 
-module load STAR/2.6.1c-foss-2018b
+module load $STARVer
 module list
 
 STAR \
@@ -531,7 +540,7 @@ STAR \
     --outFileNamePrefix $waspTmpDir/$fastqId.remap
 
 # Create index files for BAMs
-module load SAMtools/1.9-foss-2018b
+module load $SAMtoolsVer
 module list
 
 # FIXME: if you change the STAR options, the output suffix will change.
@@ -548,7 +557,7 @@ echoInfo "$stepName was submitted: $WaspRMBRemappingJobId ..."
 #
 mem=3G
 cpus=1
-time=0:29:00
+time=1:29:00
 stepName=WASPRMBFilterAndRmDup
 dependency=$afterok:$WaspRMBRemappingJobId
 if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
@@ -564,7 +573,7 @@ WaspRMBFilterAndRmDupJobId=$(sbatch $dependency \
 set -Ee -o pipefail
 
 # Filter remapped reads
-module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+module load $HDF5Ver $PythonVer
 module list
 
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
@@ -575,7 +584,7 @@ python ~/tools/WASP/mapping/filter_remapped_reads.py \
 
 # Merge original and remapped BAM, then sort and index it
 module purge
-module load SAMtools/1.9-foss-2018b
+module load $SAMtoolsVer
 module list
 
 ## Merge
@@ -599,7 +608,7 @@ samtools index \
 # # The allelic read counts by bam2h5.py of WASP are in messy, port to GTAK/ASEReadCounter instead.
 # # Count allelic reads (with duplications)
 # module purge
-# module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+# module load $HDF5Ver $PythonVer
 # module list
 # 
 # if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
@@ -620,7 +629,7 @@ samtools index \
 
 # Remove duplications
 module purge
-module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+module load $HDF5Ver $PythonVer
 module list
 
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
@@ -630,7 +639,7 @@ python ~/tools/WASP/mapping/rmdup_pe.py \
 
 # Sort and index the non-duplicated bam file
 module purge
-module load SAMtools/1.9-foss-2018b
+module load $SAMtoolsVer
 module list
 
 ## Sort
@@ -647,7 +656,7 @@ samtools index \
 # The allelic read counts by bam2h5.py of WASP are in messy, port to GTAK/ASEReadCounter instead.
 # # Count allelic reads (without duplications)
 # module purge
-# module load HDF5/1.8.14-foss-2018b Python/3.7.4-GCCcore-7.3.0-bare
+# module load $HDF5Ver $PythonVer
 # module list
 # 
 # if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
@@ -672,9 +681,9 @@ echoInfo "$stepName was submitted: $WaspRMBFilterAndRmDupJobId ..."
 #
 ## GATK: ASEReadCounter counts reads allelicly {
 #
-mem=15G
+mem=10G
 cpus=1
-time=0:59:00
+time=6:59:00
 stepName=GATKASEReadCounter
 dependency=$afterok:$WaspRMBFilterAndRmDupJobId
 if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
@@ -689,7 +698,7 @@ GatkASEReadCounterJobId=$(sbatch $dependency \
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 set -Ee -o pipefail
 
-module load GATK
+module load $GATKVer
 module list
 
 gatk ASEReadCounter \
@@ -715,9 +724,9 @@ echoInfo "$stepName was submitted: $GatkASEReadCounterJobId ..."
 #
 ## aseq estimates ASE effects {
 #
-mem=5G
+mem=10G
 cpus=2
-time=1:29:00
+time=5:59:00
 stepName=AseqASEEstimation
 dependency=$afterok:$GatkASEReadCounterJobId
 if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
@@ -732,7 +741,7 @@ AseqASEEstimationJobId=$(sbatch $dependency \
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
 set -Ee -o pipefail
 
-module load Python/3.7.4-GCCcore-7.3.0-bare
+module load $PythonVer
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
 
 python $projDir/scripts/asedlp quantify \

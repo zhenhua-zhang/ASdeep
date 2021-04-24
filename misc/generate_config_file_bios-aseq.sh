@@ -1,18 +1,21 @@
 #!/bin/bash
-pjdir=/groups/umcg-bios/tmp01/users/umcg-zzhang/projects/wp_ase_dlp
-fqdir=/groups/umcg-bios/prm02/rawdata/rnaseq # prm02 is not mounted on gearshift UI yet, then rsync is an option
+# A simple script to generate config file for SbatchAseQuantPipeline
+
+pjdir=~/Documents/projects/wp_ase_dlp
+fqdir=${fqdir:=/groups/umcg-bios/prm02/rawdata/rnaseq} # prm02 is not mounted on gearshift UI yet, then rsync is an option
 idmapfile=${idmapfile:=$pjdir/inputs/idmapping/BIOS-genotype-rnaseq-ids_with-LL_usable_20210105.txt}
 
 mkdir -p $pjdir/scripts/configs/bios
 
-while read -r dnagen_to_rnaseq; do
-    if [[ ${dnagen_to_rnaseq:0:1} == "#" ]]; then continue; fi
-    uniqId=$(cut -f1 -d$'\t' <<<"$dnagen_to_rnaseq")
-    sampleId=$(cut -f2 -d$'\t' <<<"$dnagen_to_rnaseq")
-    fastqId=$(cut -f3 -d$'\t' <<<"$dnagen_to_rnaseq")
-    cohortId=$(cut -f4 -d$'\t' <<<"$dnagen_to_rnaseq")
+while read -a dnagen_to_rnaseq; do
+    if [[ ${dnagen_to_rnaseq[0]} =~ ^'#' ]]; then continue; fi
+    uniqId=${dnagen_to_rnaseq[0]}
+    sampleId=${dnagen_to_rnaseq[1]}
+    fastqId=${dnagen_to_rnaseq[2]}
+    cohortId=${dnagen_to_rnaseq[3]}
 
-    metarunfile=$pjdir/scripts/configs/$cohortId-metarun.sh
+    # metarunfile=$pjdir/scripts/configs/$cohortId-metarun.sh
+    metarunfile=$pjdir/scripts/configs/$cohortId-metarun-aseq.sh
     if [[ ! -e $metarunfile ]]; then
         echo -e '#Config meta files for '$cohortId > $metarunfile
         echo -e 'set -Eeu -o pipefail' >> $metarunfile
@@ -66,8 +69,19 @@ fastqSuffix=.fq.gz
 # Gene ids
 geneIdFile=\$projDir/inputs/Ensembl_references/protein_coding_gene_id.txt
 
-# Python virtual environment
+# Tools versions, Python virtual env
 pyEnv=~/Documents/projects/wp_ase_dlp/scripts/.env
+GCCVer=GCC/7.3.0-2.30
+GATKVer=GATK/4.1.4.1-Java-8-LTS
+HDF5Ver=HDF5/1.8.14-foss-2018b
+STARVer=STAR/2.6.1c-foss-2018b
+PythonVer=Python/3.7.4-GCCcore-7.3.0-bare
+BCFtoolsVer=BCFtools/1.11-GCCcore-7.3.0
+SAMtoolsVer=SAMtools/1.9-foss-2018b
+
+# vim: set nowrap ft=sh ts=4 tw=120:
 EOF
-    echo "rsync -avzh umcg-zzhang@172.23.34.247:$fqdir/${fastqId}_* $pjdir/outputs/aseQuan_v2/$cohortId/tmpDir/ && $pjdir/scripts/bin/SbatchAseQuantPipeline -c $conffile" >> $metarunfile
+# For BIOS samples you have to rsync files from the old machine (calculon.hpc.rug.nl) to the new one (gearshift.hpc.rug.nl)
+    # echo "echo \$LINENO && rsync -avzh umcg-zzhang@172.23.34.247:$fqdir/${fastqId}_* $pjdir/outputs/aseQuan_v2/$cohortId/tmpDir/ && $pjdir/scripts/bin/SbatchAseQuantPipeline -c $conffile" >> $metarunfile
+    echo "echo \$LINENO && $pjdir/scripts/bin/SbatchAseQuantPipeline -c $conffile" >> $metarunfile
 done < ${idmapfile}

@@ -5,6 +5,9 @@
 #SBATCH --output=download_igsr_data.log
 #SBATCH --job-name=download_igsr_data
 
+# As there was a user storage limitation (500G) at '/data/umcg-asedeep', I switch to a scheme of
+# 'download then process'.
+
 set -Eeu
 wget_dw() {
     local help_str list_file url_col mdt_col url md5 opts
@@ -41,6 +44,10 @@ wget_dw() {
     while read -a item; do
         file_url=${item[$url_col]}
         file_md5=${item[$md5_col]}
+
+        if [[ $file_url =~ ^'#' ]]; then
+            continue
+        fi
 
         if [[ $file_url =~ ftp || $file_url =~ http ]]; then
             fname=$(basename $file_url)

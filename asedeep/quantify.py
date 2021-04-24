@@ -1,10 +1,10 @@
-'''ASE factory version 0.2.0
+"""ASE factory version 0.2.0
 
 TODO:
     1. In output FASTA file, only gene id is used for index. However, there
     could be duplicated records for one gene id. Therefore, mRNA id for the gene
     id should be used instead of gene id only.
-'''
+"""
 
 # Built-in packages
 import os
@@ -26,8 +26,7 @@ from scipy.stats import betabinom, binom, chi2
 from .zutils import cmp, M2B
 
 class ReadCountPool:
-    """A class for Read counts.
-    """
+    """A class for Read counts."""
     def __init__(self):
         super(ReadCountPool, self).__init__()
         self.data = {}
@@ -82,9 +81,11 @@ class ASEeffectFactory:
         2. Which transcript to be considered.
     """
 
-    def __init__(self, read_counts):
+    def __init__(self, read_counts, min_ac=3, min_gc=5):
         self.read_counts = self._pr_parse_rc(read_counts)
         self.optim_results = {}
+        self.min_gc = min_gc
+        self.min_ac = min_ac
 
     @staticmethod
     def _pr_parse_rc(read_counts):
@@ -107,21 +108,29 @@ class ASEeffectFactory:
         k_vec = self._pr_get_k_vec()
         n_vec = self._pr_get_n_vec()
 
-        opt_results = minimize(self._pr_bnllh, x_zero, args=(k_vec, n_vec),
-                               method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8})
-        self.optim_results["binomial"] = opt_results
+        a1c = int(sum(k_vec))
+        aac = int(sum(n_vec))
+        a2c = aac - a1c
 
-        # _est_t = opt_results["x"]
-        estll = opt_results["fun"]
+        do_ase = (a1c >= self.min_ac or a2c >= self.min_ac) and aac >= self.min_gc
+        if do_ase:
+            opt_results = minimize(self._pr_bnllh, x_zero, args=(k_vec, n_vec),
+                                   method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8})
+            self.optim_results["binomial"] = opt_results
 
-        hyp_t = 0.5
-        hypll = self._pr_bnllh(hyp_t, k_vec, n_vec)
+            # _est_t = opt_results["x"]
+            estll = opt_results["fun"]
 
-        llr = - 2 * (estll - hypll)
-        p_val = chi2.sf(llr, 1)
+            hyp_t = 0.5
+            hypll = self._pr_bnllh(hyp_t, k_vec, n_vec)
 
-        k_sum, n_sum = sum(k_vec), sum(n_vec)
-        return llr, p_val, cmp(2 * k_sum, n_sum) # likelihood ratio, p-value, direction
+            llr = - 2 * (estll - hypll)
+            p_val = chi2.sf(llr, 1)
+
+            k_sum, n_sum = sum(k_vec), sum(n_vec)
+            return llr, p_val, cmp(2 * k_sum, n_sum) # likelihood ratio, p-value, direction
+
+        return 0, 1, 0
 
     # The likelihood function of Beta-Binomial distribution
     @staticmethod
@@ -139,21 +148,29 @@ class ASEeffectFactory:
         k_vec = self._pr_get_k_vec()
         n_vec = self._pr_get_n_vec()
 
-        opt_results = minimize(self._pr_bbllh, x_zero, args=(k_vec, n_vec),
-                               method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8})
-        self.optim_results["beta_binomial"] = opt_results
+        a1c = int(sum(k_vec))
+        aac = int(sum(n_vec))
+        a2c = aac - a1c
 
-        # _est_a, _est_b = opt_results["x"]
-        estll = opt_results["fun"]
+        do_ase = (a1c >= self.min_ac or a2c >= self.min_ac) and aac >= self.min_gc
+        if do_ase:
+            opt_results = minimize(self._pr_bbllh, x_zero, args=(k_vec, n_vec),
+                                   method="nelder-mead", options={"maxfev": 1e3, "ftol": 1e-8})
+            self.optim_results["beta_binomial"] = opt_results
 
-        hyp_a = hyp_b = opt_results["x"].mean()
-        hypll = self._pr_bbllh([hyp_a, hyp_b], k_vec, n_vec)
+            # _est_a, _est_b = opt_results["x"]
+            estll = opt_results["fun"]
 
-        llr = - 2 * (estll - hypll) # The likelihood value is timed by -1
-        p_val = chi2.sf(llr, 1)
+            hyp_a = hyp_b = opt_results["x"].mean()
+            hypll = self._pr_bbllh([hyp_a, hyp_b], k_vec, n_vec)
 
-        k_sum, n_sum = sum(k_vec), sum(n_vec)
-        return llr, p_val, cmp(2 * k_sum, n_sum) # likelihood ratio, p-value, direction
+            llr = - 2 * (estll - hypll)
+            p_val = chi2.sf(llr, 1)
+
+            k_sum, n_sum = sum(k_vec), sum(n_vec)
+            return llr, p_val, cmp(2 * k_sum, n_sum) # likelihood ratio, p-value, direction
+
+        return 0, 1, 0
 
     def _pr_get_k_vec(self):
         return self.read_counts[0]
@@ -162,15 +179,13 @@ class ASEeffectFactory:
         return list(map(sum, zip(self.read_counts[0], self.read_counts[1])))
 
     def chi_square_test(self):
-        """Using a Chi-square test on given data.
-        """
+        """Using a Chi-square test on given data."""
         self.__str__
         return NotImplemented
 
 
-class ASEFactory:
-    """A class to produce ASE effects and matrix of regulatory sequence.
-    """
+class Quantifier:
+    """A class to produce ASE effects and matrix of regulatory sequence."""
     _sample_id = None  # Static
     _gene_ids = None   # Static
 
@@ -180,7 +195,7 @@ class ASEFactory:
     readcount_pool = None
 
     def __init__(self, args):
-        super(ASEFactory, self).__init__()
+        super(Quantifier, self).__init__()
         self.args = args
 
         self._sample_id = args.sample_id
@@ -191,7 +206,7 @@ class ASEFactory:
         self.seq_pool = None
 
         if self.args.variants_file:
-            self.variant_pool = vcf.Reader(open(self.args.variants_file, 'rb'))
+            self.variant_pool = vcf.Reader(open(self.args.variants_file, "rb"))
         else:
             raise FileNotFoundError("No variants file was given or it's not accessible!")
 
@@ -202,7 +217,7 @@ class ASEFactory:
 
         if self.args.ase_readcount_file:
             self.ase_readcounts = pandas.read_csv(self.args.ase_readcount_file, sep=None,
-                                                  engine='python')
+                                                  engine="python")
         else:
             raise FileNotFoundError("No ASE read counts file was given or it's not accessible!")
 
@@ -258,7 +273,7 @@ class ASEFactory:
     # Get the read counts in the genomic interval
     def _pr_get_readcounts(self, chrom, start, end) -> pandas.DataFrame:
         return (self.ase_readcounts
-                .query('contig=={} & {}<=position & position<={}'.format(chrom, start, end)))
+                .query("contig=={} & {}<=position & position<={}".format(chrom, start, end)))
 
     # Fetch ambiguous
     @staticmethod
@@ -268,7 +283,7 @@ class ASEFactory:
     # Generate allelic sequence using ambiguous base
     def _pr_gen_ase_seq(self, itvl: gffutils.Feature, shift=5e2):
         chrom, start, end, strand = itvl.chrom, itvl.start, itvl.end, itvl.strand
-        if strand == '+':
+        if strand == "+":
             start, end = start - shift, start
         else:
             start, end = end, end + shift
@@ -281,7 +296,7 @@ class ASEFactory:
             sample_genotype = vcf_record.genotype(self._sample_id)
 
             if sample_genotype.is_het and sample_genotype.phased:
-                genotype_bases = sample_genotype.gt_bases.replace('|', '')
+                genotype_bases = sample_genotype.gt_bases.replace("|", "")
                 amb_base = self._pr_encode_bnt(genotype_bases)
 
                 insert_pos = vcf_record.start - start
@@ -292,7 +307,7 @@ class ASEFactory:
     # Generate a ReadCountsPool.
     def _pr_gen_rcp(self, exon_pool):
         def _get_var_gt(key, vmap):
-            call = vmap.get((str(key.loc['contig']), key.loc['position']))
+            call = vmap.get((str(key.loc["contig"]), key.loc["position"]))
             if call:
                 return call.data.GT
 
@@ -310,24 +325,24 @@ class ASEFactory:
             vmap = {(var.CHROM, var.POS): var.genotype(self._sample_id)
                     for var in self._pr_get_variants(exon_chrom, exon_start, exon_end)}
             # Add variant information to the allelic read count DataFrame
-            exon_rc.insert(7, 'genotype', exon_rc.apply(_get_var_gt, 1, vmap=vmap))
+            exon_rc.insert(7, "genotype", exon_rc.apply(_get_var_gt, 1, vmap=vmap))
             # Only working on heterzygous loci
-            het_exon_vars = exon_rc.loc[exon_rc['genotype'].apply(lambda x: x in ['0|1', '1|0']), :]
+            het_exon_vars = exon_rc.loc[exon_rc["genotype"].apply(lambda x: x in ["0|1", "1|0"]), :]
 
             if het_exon_vars.empty:
                 continue
 
             nz_a1_counts, nz_a2_counts, nz_het_loci = [], [], []
-            for _, (chrom, pos, snpid, ref, alt, ref_rc, alt_rc, gt, *_) in het_exon_vars.iterrows():
-                if gt == '0|1':
-                    nz_a1_counts.append(ref_rc)
-                    nz_a2_counts.append(alt_rc)
+            for _, (chrom, pos, snpid, ref, alt, refrc, altrc, gt, *_) in het_exon_vars.iterrows():
+                if gt == "0|1":
+                    nz_a1_counts.append(refrc)
+                    nz_a2_counts.append(altrc)
                 else:
-                    nz_a1_counts.append(alt_rc)
-                    nz_a2_counts.append(ref_rc)
+                    nz_a1_counts.append(altrc)
+                    nz_a2_counts.append(refrc)
 
-                if snpid == '.':
-                    snpid = str(chrom) + ':' + str(pos)
+                if snpid == ".":
+                    snpid = str(chrom) + ":" + str(pos)
 
                 nz_het_loci.append([[chrom, pos, snpid, ref, alt], [gt[0], gt[-1]]])
 
@@ -384,8 +399,7 @@ class ASEFactory:
         return self
 
     def save_ase_report(self, opt_file=None):
-        """Save the estimated ASE effects into disk.
-        """
+        """Save the estimated ASE effects into disk."""
         if opt_file is None:
             if self.args.as_ase_report:
                 opt_file = self.args.as_ase_report
@@ -401,24 +415,21 @@ class ASEFactory:
                 if ase_effect:
                     (bnlr, bnpv, _), (bblr, bbpv, dire), (a1_rc, a2_rc, snp_info) = ase_effect
 
-                    _rc_chain, _pos_chain, _phase_chain = ["A1|A2:"], ["CH,PS,ID,REF>ALT:"], ["A1|A2:"]
-                    for _a1_rc, _a2_rc, ((chrom, pos, snpid, ref, alt), (a1gt, a2gt)) in zip(a1_rc, a2_rc, snp_info):
-                        snp_pos = ','.join([str(chrom), str(pos), snpid, ref]) + ">" + alt
+                    _rc, _pos, _phase = ["A1|A2:"], ["CH,PS,ID,REF>ALT:"], ["A1|A2:"]
+                    _zip_rec = zip(a1_rc, a2_rc, snp_info)
+                    for _a1_rc, _a2_rc, ((chrom, pos, snpid, ref, alt), (a1gt, a2gt)) in _zip_rec:
+                        snp_pos = ",".join([str(chrom), str(pos), snpid, ref]) + ">" + alt
                         snp_phase = str(a1gt) + "|" + str(a2gt)
                         snp_rc = str(_a1_rc) + "|" + str(_a2_rc)
 
-                        _rc_chain.append(snp_rc)
-                        _pos_chain.append(snp_pos)
-                        _phase_chain.append(snp_phase)
+                        _rc.append(snp_rc)
+                        _pos.append(snp_pos)
+                        _phase.append(snp_phase)
 
                     info_list_1 = [self._sample_id, geneid, bnlr, bnpv, bblr, bbpv, dire]
-                    info_list_2 = [x[0] + ";".join(x[1:]) for x in [_pos_chain, _phase_chain, _rc_chain]]
-                else:
-                    info_list_1 = [self._sample_id, geneid] + ["NA"] * 5
-                    info_list_2 = ["NA"] * 4
-
-                est_result = "\t".join([str(x) for x in info_list_1 + info_list_2])
-                rfh.write(est_result + "\n")
+                    info_list_2 = [x[0] + ";".join(x[1:]) for x in [_pos, _phase, _rc]]
+                    est_result = "\t".join([str(x) for x in info_list_1 + info_list_2])
+                    rfh.write(est_result + "\n")
 
         return self
 

@@ -1,0 +1,91 @@
+#!/bin/bash
+# Author    : Zhenhua Zhang
+# E-mail    : zhenhua.zhang217@gmail.com
+# Created   : 2020 Apr 01
+
+set -eu -o pipefail
+
+projdir=$HOME/Documents/projects/wp_ase_dlp
+iptdir=$projdir/inputs
+optdir=$projdir/outputs
+
+time_stamp=$(date +%Y%m%d_%H%M%S)
+
+n_epoch=200
+# gene_id=ENSG00000108405
+gene_id=ENSG00000127507  # 0.3030698889614631
+gene_id=ENSG00000090382
+cohort=bios
+
+output_dir=$optdir/aseModels/$cohort/$gene_id
+model_path=$output_dir/$time_stamp"_pytorch-model.pth"
+logging_path=$output_dir/$time_stamp"_tensorboard-log"
+sbatch_log_path=$output_dir/$time_stamp"-%j-%u-asedlp-train.log"
+sbatch_job_name=${gene_id}_asedlp-train
+
+case $cohort in
+    bios_geuvadis)
+        file_pat=$projdir'/outputs/aseQuan_v2/*/optDir/*/aseqOptDir/*-dup-*.fa'
+        ;;
+    bios)
+        bios_cohorts='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,RS,gonl}'
+        file_pat=$projdir'/outputs/aseQuan_v2/'$bios_cohorts'/optDir/*/aseqOptDir/*-dup-*.fa'
+        ;;
+    geuvadis)
+        file_pat=$projdir'/outputs/aseQuan_v2/Geuvadis/optDir/*/aseqOptDir/*-dup-*.fa'
+        ;;
+    gtex)
+        file_pat=$projdir'/outputs/aseQuan_v2/GTEx/optDir/*/aseqOptDir/*-dup-*.fa'
+        ;;
+    *)
+        echo Unknown cohort
+        exit -1
+        ;;
+esac
+
+if [[ ! -d $output_dir ]]; then
+    mkdir -p $output_dir
+fi
+
+
+sbatch \
+    --mem=5G \
+    --gres=gpu:v100:1 \
+    --time=1:29:0 \
+    --partition=gpu \
+    --output=$sbatch_log_path \
+    --job-name=$sbatch_job_name <<EOF
+#!/bin/bash
+set -eu -o pipefail
+
+# Check host name
+case \$(hostname) in
+    umcg-node* | calculon | gear | gs-vcompute*)
+        source /apps/modules/modules.bashrc
+        module purge
+        module load Python/3.6.3-foss-2015b
+        module list
+        ;;
+    pg-interactive* | pg-node* | pg-gpu*)
+        module purge
+        module load Python/3.7.4-GCCcore-8.3.0
+        module list
+        ;;
+    genetics)
+        echo "On local machine genetics."
+        ;;
+    *)
+        echo "[E]: Unknown hostname"
+        exit
+esac
+
+source $projdir/scripts/.env/bin/activate
+python $projdir/scripts/asedlp train \
+    --file-path ${file_pat} \
+    --gene-id ${gene_id} \
+    --n-epoch ${n_epoch} \
+    --model-state-path ${model_path} \
+    --logging-path ${logging_path} \
+    --log-per-n-epoch 1
+
+EOF

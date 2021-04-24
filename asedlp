@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 # Author    : Zhenhua Zhang
@@ -6,22 +6,22 @@
 # License   : MIT
 # Create on : 2020 Mar 07 10:04:54
 
-'''Deep learning methods to predict allele-specific expression effects by
-integrating RNA-seq results and haplotypes.
+'''Deep learning way to predict allele-specific expression by integrating RNA-seq reads and haplotypes.
 
 Note:
-    The package is a allele-specific expression analysis tool using the output
-    from WASP or GATK/ASEReadCounter.
+    The package is a allele-specific expression analysis tool using the output from ASEReadCounter.
 
-Dependency:
-    - PyTorch (>= 1.3.0)
-    - torchvision (>=0.4.2)
+Dependency (Python 3.7.x):
+    - Numpy
     - Matplotlib
     - Pandas
-    - Numpy
+    - Pyfaidx (?)
+    - PyVcf (?)
+    - PyTorch (>= 1.3.0)
+    - torchvision (>=0.4.2)
 
 Usage:
-    ./asedlp {quantify,train,cam,predict}
+    ./asedlp {quantify, train, predict}
 
 TDOO:
     [ ] Update the documents
@@ -33,18 +33,17 @@ import argparse
 
 import numpy
 
-logging.basicConfig(format='{levelname: ^8}| {asctime} | {name} | {message}', style='{',
-                    datefmt='%Y-%m-%d, %H:%M:%S', level=logging.INFO)
 
 def get_args():
     '''Get CLI arguments.'''
     parser = argparse.ArgumentParser(description='A tool for the analysis of allele-specific expression.')
     parser.add_argument('-l', '--log-file', dest='log_file', default=None, metavar='FILE',
                         help='The file into which logging write.')
-    parser.add_argument('-v', '--verbose-level', action='count', dest='verbose_level', default=0,
+    parser.add_argument('-v', '--verbose-level', action='count', dest='verbose_level', default=2,
                         help='Verbose level. A counting keyword argument.')
 
     sub_parsers = parser.add_subparsers(prog='asedlp', dest='subcmd')
+
     quant_parser = sub_parsers.add_parser('quantify', help='Quantify ASE effects and generate training set')
     quant_parser.add_argument('-i', '--sample-id', required=True, dest='sample_id', metavar='STRING',
                               help='The sample ID in variants file.')
@@ -55,11 +54,19 @@ def get_args():
     quant_parser.add_argument('-f', '--gene-feature-from', required=True, dest='gene_feature_file', metavar='FILE',
                               help='The file (GFF/GTF) from which read the gene feature.')
     quant_parser.add_argument('-r', '--ase-readcount-from', required=True, dest='ase_readcount_file', metavar='FILE',
-                              help='The file from which read the allele-specific read counts. The file should be a space-delimited file including 7 fields named by chrom, pos, ref, alt, gt, ref_rc, alt_rc, oth_rc')
+                              help='The file from which read the allele-specific read counts.')
     quant_parser.add_argument('-g', '--gene-ids', default=[], nargs='+', dest='gene_ids', metavar='STRING',
                               help='The gene IDs. Default: %(default)s')
     quant_parser.add_argument('-G', '--gene-id-from', default=None, dest='gene_id_file', metavar='FILE',
                               help='The file from which read the gene ids. Default: %(default)s')
+    quant_parser.add_argument('-m', '--min-allelic-counts', default=3, dest='min_allelic_counts', metavar='INTEGER',
+                              help='The minimal read counts from each chromosome. Default: %(default)s')
+    quant_parser.add_argument('-M', '--min-total-counts', default=6, dest='min_total_counts', metavar='INTEGER',
+                              help='The minimal read counts from two chromosomes. Default: %(default)s')
+    quant_parser.add_argument('--seq-only', action='store_true', dest='seq_only',
+                             help='Disable sequence generation.')
+    quant_parser.add_argument('--ase-only', action='store_true', dest='ase_only',
+                             help='Disable ASE generation.')
     quant_parser.add_argument('-T', '--train-set-to', default='ase-train-set.fa.gz', dest='as_train_set', metavar='FILE',
                               help='The file to which write the training dataset into. Default: %(default)s')
     quant_parser.add_argument('-R', '--ase-report-to', default='ase-report.txt', dest='as_ase_report', metavar='FILE',
@@ -67,43 +74,39 @@ def get_args():
     quant_parser.add_argument('-F', '--shift-factor', default=1e3, dest='shift_factor', metavar='INTEGER',
                               help='Number of base pairs shift from the start codon, the strand will be considered. Default: %(default)s')
 
-    train_parser = sub_parsers.add_parser("train", help="Train the model on quantified ASE effects")
-    train_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", metavar='FILE', nargs="*",
-                              help="The pattern to read input files.")
-    train_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar="STRING",
-                              help="The Ensembl id of a gene for which train the model. Default: %(default)s")
-    train_parser.add_argument("-s", "--model-state-path", default="./torch_model.pth", dest="model_state_path", metavar='FILE',
-                              help="The path to which save the model state dict. Default: %(default)s")
-    train_parser.add_argument("-L", "--logging-path", default="./logging_run", dest="logging_path", metavar='DIRECTORY',
-                              help="The path into which write the logging files for tensorboard. Default: %(default)s")
-    train_parser.add_argument("-r", "--learning-rate", type=float, default=1e-5, dest="learning_rate", metavar='FLOAT',
-                              help="Learning rate. Default: %(default)s")
-    train_parser.add_argument("-e", "--n-epoch", default=50, type=int, dest="n_epoch", metavar='INTEGER',
-                              help="The number of epoch will be run. Default: %(default)s")
-    train_parser.add_argument("-R", "--random-state", default=31415, type=int, dest="random_state", metavar='INTEGER',
-                              help="The random seed for torch. Default: %(default)s")
-    train_parser.add_argument("--pp-train", default=.7, type=float, dest="pp_train", metavar='FLOAT',
-                              help="The propotion of dataset will be used as training set. Default: %(default)s")
-    train_parser.add_argument("--log-per-n-epoch", default=5, type=int, dest="log_per_n_epoch", metavar='INTEGER',
-                              help="Number of epoch for each evaluation point. Default: %(default)s")
+    train_parser = sub_parsers.add_parser('train', help='Train the model on quantified ASE effects')
+    train_parser.add_argument('-p', '--file-path', required=True, dest='file_path_pool', metavar='FILE', nargs='*',
+                              help='The pattern to read input files.')
+    train_parser.add_argument('-g', '--gene-id', default='all', dest='gene_id', metavar='STRING',
+                              help='The Ensembl id of a gene for which train the model. Default: %(default)s')
+    train_parser.add_argument('-s', '--model-state-path', default='./asedlp_model.pth', dest='model_state_path', metavar='FILE',
+                              help='The path to which save the model state dict. Default: %(default)s')
+    train_parser.add_argument('-L', '--logging-path', default='./asedlp_logs', dest='logging_path', metavar='DIRECTORY',
+                              help='The path into which write the logging files for tensorboard. Default: %(default)s')
+    train_parser.add_argument('-r', '--learning-rate', type=float, default=1e-5, dest='learning_rate', metavar='FLOAT',
+                              help='Learning rate. Default: %(default)s')
+    train_parser.add_argument('-e', '--n-epoch', default=5, type=int, dest='n_epoch', metavar='INTEGER',
+                              help='The number of epoch will be run. Default: %(default)s')
+    train_parser.add_argument('-R', '--random-state', default=42, type=int, dest='random_state', metavar='INTEGER',
+                              help='The random seed for torch. Default: %(default)s')
+    train_parser.add_argument('-b', '--batch-size', default=64, type=int, dest='batch_size', metavar='INTEGER',
+                              help='Batch size. Default: %(default)s')
+    train_parser.add_argument('--pp-train', default=.9, type=float, dest='pp_train', metavar='FLOAT',
+                              help='The propotion of dataset will be used as training set. Default: %(default)s')
+    train_parser.add_argument('--log-per-n-epoch', default=5, type=int, dest='log_per_n_epoch', metavar='INTEGER',
+                              help='Number of epoch for each evaluation point. Default: %(default)s')
 
-    cam_parser = sub_parsers.add_parser("cam", help="Show the Class Activation Map")
-    cam_parser.add_argument("-g", "--gene-id", required=True, dest="gene_id", metavar="STRING",
-                            help="The Ensembl id of a gene for which train the model.")
-    cam_parser.add_argument("-p", "--file-path", required=True, dest="file_path", metavar="FILE",
-                            nargs="*", help="The pattern to read input files.")
-    cam_parser.add_argument("-s", "--model-state", required=True, dest="model_state", metavar="FILE",
-                            help="The model state to be loaded.")
-    cam_parser.add_argument("-o", "--save-path", default="output_pic", dest="save_path", metavar="FILE",
-                            help="The path into which save the CAM. Default: %(default)s")
-
-    pred_parser = sub_parsers.add_parser("predict", help="Predict based on given net work state")
-    pred_parser.add_argument("-p", "--file-path", required=True, dest="file_path_pool", nargs="*", metavar='FILE',
-                             help="The pattern to read input files.")
-    pred_parser.add_argument("-g", "--gene-id", default="all", dest="gene_id", metavar='STRING',
-                             help="The Ensembl id of a gene for which train the model. Default: %(default)s")
-    pred_parser.add_argument("-s", "--model-state", default="./test/model_state.pth", dest="model_state", metavar="FILE",
-                             help="The model state to be loaded. Default: %(default)s")
+    pred_parser = sub_parsers.add_parser('predict', help='Predict based on given net work state')
+    pred_parser.add_argument('-p', '--file-path', required=True, dest='file_path_pool', nargs='*', metavar='FILE',
+                             help='The pattern to read input files.')
+    pred_parser.add_argument('-g', '--gene-id', default='all', dest='gene_id', metavar='STRING',
+                             help='The Ensembl id of a gene for which train the model. Default: %(default)s')
+    pred_parser.add_argument('-s', '--model-state-path', default='./asedlp_model.pth', dest='model_state_path', metavar='FILE',
+                             help='The model state to be loaded. Default: %(default)s')
+    pred_parser.add_argument('-o', '--save-path', default='asedlp_pred', dest='save_path', metavar='PATH',
+                             help='The path into which save the prediction results. Default: %(default)s')
+    pred_parser.add_argument('-c', '--show-cam', action='store_true', dest='show_cam',
+                             help='Whether show the CAM map.')
 
     return parser
 
@@ -111,17 +114,33 @@ def get_args():
 def quantify(args):
     '''Qunatify the allele-specific expression effect for genes.'''
     try:
-        from asedeep.ASEFactory import ASEFactory
+        from asedeep.quantify import Quantifier
     except ImportError as ime:
-        logging.error("Import error: {}".format(ime))
+        logging.error('Import error: {}'.format(ime))
         sys.exit(1)
 
-    afactory = ASEFactory(args)
-    afactory.gen_gnm_itvl() \
-            .gen_seq() \
-            .gen_ase() \
-            .save_ase_report() \
-            .save_train_set()
+    seq_only = args.seq_only
+    ase_only = args.ase_only
+
+    if seq_only and ase_only:
+        raise ValueError('--seq-only and --ase-only are mutually exclusive!')
+    elif seq_only:
+        (Quantifier(args)
+         .gen_gnm_itvl()
+         .gen_seq()
+         .save_train_set())
+    elif ase_only:
+        (Quantifier(args)
+         .gen_gnm_itvl()
+         .gen_ase()
+         .save_ase_report())
+    else:
+        (Quantifier(args)
+         .gen_gnm_itvl()
+         .gen_seq()
+         .gen_ase()
+         .save_ase_report()
+         .save_train_set())
 
 
 def train(args):
@@ -130,15 +149,16 @@ def train(args):
         import torch
         import torch.nn as nn
         import torchvision.models as models
-        from asedeep.DLPFactory import DLPFactory
+        from asedeep.train import Trainer
     except ImportError as ime:
-        logging.error("Import error: {}".format(ime))
+        logging.error('Import error: {}'.format(ime))
         sys.exit(1)
 
     file_path_pool = args.file_path_pool
     gene_id = args.gene_id
     n_epoch = args.n_epoch
     pp_train = args.pp_train
+    batch_size = args.batch_size
     random_state = args.random_state
     logging_path = args.logging_path
     learning_rate = args.learning_rate
@@ -147,46 +167,40 @@ def train(args):
 
     numpy.random.seed(random_state)
     torch.manual_seed(random_state)
-    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
     # It is feasible to use the CAM as there's AdaptiveAvgPool2d layer.
     net = models.resnext50_32x4d()
     net.conv1 = nn.Conv2d(1, 64, (7, 7), (2, 2), (3, 3), bias=False)
     net.fc = nn.Linear(in_features=2048, out_features=3, bias=True)
 
-    dfactory = DLPFactory(net, gene_id, file_path_pool, logging_path=logging_path,
-                          log_per_n_epoch=log_per_n_epoch)
-    dfactory.init() \
-            .load_dataset() \
-            .train_test_split(pp_train) \
-            .train(eps=n_epoch, learning_rate=learning_rate) \
-            .save_model(model_state_path)
+    (Trainer(net, gene_id, file_path_pool, logging_path, log_per_n_epoch)
+     .init()
+     .load_dataset()
+     .train_test_split(pp_train)
+     .train(eps=n_epoch, learning_rate=learning_rate, batch_size=batch_size)
+     .save_model(model_state_path))
 
 
-def predict():
+def predict(args):
     '''Predict.'''
-    raise NotImplementedError("Not implemented yet!!!")
-
-
-def cam(args):
-    '''Calculate classification activation map.'''
     try:
-        from asedeep.CamFactory import CamFactory
+        from asedeep.predict import Predictor
     except ImportError as ime:
-        logging.error("Import error: {}".format(ime))
+        logging.error('Import error: {}'.format(ime))
         sys.exit(1)
 
+    file_path_pool = args.file_path_pool
     gene_id = args.gene_id
-    file_path = args.file_path
-    model_state = args.model_state
+    model_state_path = args.model_state_path
     save_path = args.save_path
+    show_cam = args.show_cam
 
-    cfactory = CamFactory(gene_id=gene_id, file_path=file_path)
-    cfactory.init(model_state=model_state) \
-            .load_dataset() \
-            .show_cam(save_path) \
-            .show_cam_dist_along_seq(save_path=save_path)
+    (Predictor(gene_id=gene_id, file_path=file_path_pool)
+     .init(model_state=model_state_path)
+     .load_dataset()
+     .predict(save_path, show_cam=show_cam))
 
 
 def main():
@@ -194,14 +208,17 @@ def main():
     parser = get_args()
     args = parser.parse_args()
 
-    if args.subcmd == "quantify":
+    log_file = args.log_file
+    verbose_level = args.verbose_level * 10
+    logging.basicConfig(filename=log_file, format='{levelname: ^8}| {asctime} | {message}',
+                        style='{', datefmt='%Y%m%d,%H:%M:%S', level=verbose_level)
+
+    if args.subcmd == 'quantify':
         quantify(args)
     elif args.subcmd == 'train':
         train(args)
-    elif args.subcmd == "cam":
-        cam(args)
     elif args.subcmd == 'predict':
-        predict()
+        predict(args)
     else:
         parser.print_help()
 
