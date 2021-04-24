@@ -11,3 +11,6 @@ _archived/
 .env/
 .idea/
 .vscode/
+
+# Never track binary files including: pdf
+README.pdf
