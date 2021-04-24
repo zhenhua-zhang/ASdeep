@@ -62,9 +62,10 @@ CrossMap.py vcf $convert_chain $clean_vars $ref_genome_b37 $clean_vars_b37 --no-
 module purge
 module load bcftools/1.9-foss-2018a
 bgzip -f -i -@ $stepcpus $clean_vars_b37
+bcftools index -@ $stepcpus -t $clean_vars_b37
 
 # Clean up
-rm -f ${clean_vars} ${clean_vars_b37}
+rm -f ${clean_vars}
 
 # Report
 echo Done
