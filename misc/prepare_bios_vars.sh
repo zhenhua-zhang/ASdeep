@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# File name : SbatchPhasing
+# File name : prepare_bios_vars.sh
 # Author    : Zhenhua Zhang
 # E-mail    : zhenhua.zhang217@gmail.com
 # Created   : Tue 30 Jun 2020 04:49:32 PM CEST
@@ -8,13 +8,13 @@
 # License   : MIT
 #
 
-set -Eeu -o pipefail
-
 if [[ -e /apps/modules/modules.bashrc ]]; then
     source /apps/modules/modules.bashrc
 fi
 
-# Cohorts: CODAM  NTR  PAN  RS
+set -Eeu -o pipefail
+
+# Cohorts: CODAM  NTR  PAN  RS LL
 # Sample information
 cohort="${1:?Error: You should give the cohort id!}"
 
@@ -30,6 +30,7 @@ bcftools_dir=$pjdir/outputs/phasing_v2/$cohort/bcftools
 conformGt_dir=$pjdir/outputs/phasing_v2/$cohort/conformGt
 beagle_dir=$pjdir/outputs/phasing_v2/$cohort/beagle
 log_dir=$pjdir/outputs/phasing_v2/$cohort/logs
+
 mkdir -p $bcftools_dir $conformGt_dir $beagle_dir $log_dir
 
 debug=true
@@ -60,27 +61,21 @@ sbatch \
     --output=$log_dir/%A-%a_%u_phasing_$cohort.log \
     <<EOF | cut -f4 -d' '
 #!/bin/bash
+
 # Ensure Slurm settings is updated.
-source /apps/modules/modules.bashrc
+if [[ -e /apps/modules/modules.bashrc ]]; then
+    source /apps/modules/modules.bashrc
+fi
 
 set $set_flags -o pipefail
 
 chr_id=\${SLURM_ARRAY_TASK_ID:=1}
 
-cat <<INNEREOF
-#
-## Quality control by BCFtools
-#
-INNEREOF
-module purge && module load BCFtools && module list
-
-# BCFtools version should be: bcftools=1.9, htslib=1.9
-bcftools --version
+module purge && module load BCFtools/1.9-foss-2018b && module list
 
 # Input: upstream
 # The imputed files are located /groups/umcg-bios/prm02/projects/HRC_imputation,
 # which are imputed using Michigan Imputation Server.
-
 imputed_gntp=$pjdir/inputs/BIOS_genotypes/$cohort/chr\${chr_id}.dose.vcf.gz
 
 # Output: downstream
@@ -96,17 +91,8 @@ bcftools view \
     \$imputed_gntp
 
 
-cat <<INNEREOF
-#
-## Phasing by Beagle
-#
-INNEREOF
-
 # Beagle version 5.1 which is powered by Java 1.8 or higher.
 module purge && module load Java/1.8.0_144 && module list
-
-# conform version;
-java -jar ~/tools/beagle/conform-gt.24May16.cee.jar | grep usage
 
 # Input: reference
 ref_panel_gntp=$pjdir/inputs/beagle/reference_panel/chr\${chr_id}.1kg.phase3.v5a.vcf.gz
@@ -124,48 +110,9 @@ java -jar ~/tools/beagle/conform-gt.24May16.cee.jar \
     match=POS \
     out=\$imputed_filtered_adj_gntp
 
-EOF
-
-exit
-debug=true
-if [[ $debug == true ]]; then
-    runCpus=2
-    runMems=15G
-    runTime=0:29:0
-    runArray=1-1
-    set_flags=-Eeux
-else
-    runCpus=5
-    runMems=20G
-    runTime=19:59:0
-    runArray=1-22
-    set_flags=-Eeu
-fi
-
-sbatch \
-    --mem=$runMems \
-    --time=$runTime \
-    --array=$runArray \
-    --cpus-per-task=$runCpus \
-    --job-name=phasing-$cohort \
-    --output=$log_dir/%A-%a_%u_phasing_$cohort.log \
-    <<EOF | cut -f4 -d' '
-#!/bin/bash
-# Ensure Slurm settings is updated.
-source /apps/modules/modules.bashrc
-
-set $set_flags -o pipefail
-
-# Beagle version: beagle.18May20.d20.jar (version 5.1)
-java -jar ~/tools/beagle/beagle.18May20.d20.jar | head -1
-
-# Imputation and phasing.
+# Phasing.
 # Input: reference map and genotype.
-# ref_panel_gntp=$pjdir/inputs/beagle/reference_panel/chr\${chr_id}.1kg.phase3.v5a.vcf.gz
 ref_panel_map=$pjdir/inputs/beagle/genetic_maps/plink.chr\${chr_id}.GRCh37.map
-
-# Input: upstream
-# imputed_filtered_adj_gntp".vcf.gz"
 
 # Output: final
 imputed_filtered_adj_phased_gntp=$beagle_dir/beagle-$cohort-chr\${chr_id}
@@ -191,38 +138,3 @@ bcftools view \
 rm -f \$imputed_filtered_adj_phased_gntp
 EOF
 
-
-# For Geuvadis samples, the variants are all phased officially. Therefore, these variants were filtered
-# by the following commands
-# bcftools view 
-
-# FIXME:
-# 
-# runTime=1:59:0
-# runMems=40G
-# log=$log_dir/%A_%a-%u-genotypePooling-$cohort.log
-# job=phasingAndImputation-$cohort
-# sbatch --time=$runTime \
-#     --mem=$runMems \
-#     --output=$log \
-#     --job-name=$job \
-#     --array=1-7 \
-#     --cpus-per-task=${runCpus} \
-#     <<EOF | cut -f4 -d' '
-# #!/bin/bash
-# if [[ -e /apps/modules/modules.bashrc ]]; then
-#     source /apps/modules/modules.bashrc
-# fi
-# 
-# set -Eeux -o pipefail
-# 
-# echo -e '#\n## Rename samples and merge VCF files\n#'
-# 
-# module purge && module load BCFtools && module list
-# bcftools --version | head -2
-# 
-# echo -e '#\n## PCA analysis to identify population stratification\n#'
-# module purge && module load plink && module list
-# plink --version
-# 
-# EOF
