@@ -11,6 +11,7 @@ set -Eeu -o pipefail
 mypath=$(dirname $(realpath $0))
 input_md=$mypath/../README.md
 output_pdf=$mypath/../README.pdf
+
 pandoc \
     --pdf-engine xelatex \
     --highlight-style tango \
