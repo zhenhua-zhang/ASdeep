@@ -81,12 +81,15 @@ class SeqToHelbertAndMakeLabel:
         self.matrix = matrix
 
     def __call__(self, sample, **kwargs):
-        sequence, labels = sample
+        sequence, (p_val, label) = sample
 
-        if labels[0] <= self.pthd:
-            _label = labels[1] + 1
+        if p_val is None or label is None:
+            _label = -1
         else:
-            _label = 1
+            if p_val <= self.pthd:
+                _label = label + 1
+            else:
+                _label = 1
 
         _hcurve = HelbertCurve(sequence, **kwargs).seq_to_hcurve()
 
@@ -139,21 +142,25 @@ class ASEDataset(Dataset):
             file_path = self.file_path_pool[idx]
 
             seq_pool = pyfaidx.Fasta(file_path)
-            record = [seq_pool[record_id] for record_id in seq_pool.keys()
-                      if self.gene_id in record_id][0]
+            record = [seq_pool[idx] for idx in seq_pool.keys() if self.gene_id in idx][0]
 
             if record is None or len(record) == 0:
                 _err_msg = 'No \'{}\' in \'{}\''.format(self.gene_id, file_path)
                 logging.warning(_err_msg)
-                temp_list.append([None, None])
+                temp_list.append((None, None, None))
             else:
-                p_val_bn, p_val_bb, label = record.name.split('|')[2:5]
-                if self.use_bb_pval:
-                    p_val = p_val_bb
+                record_list = record.name.split('|')
+                if len(record_list) > 2:
+                    p_val_bn, p_val_bb, label = record.name.split('|')[2:5]
+                    if self.use_bb_pval:
+                        p_val = p_val_bb
+                    else:
+                        p_val = p_val_bn
+                    p_val, label = float(p_val), int(label)
                 else:
-                    p_val = p_val_bn
+                    p_val, label = None, None
 
-                temp_list.append((str(record[0:].seq), (float(p_val), int(label))))
+                temp_list.append((str(record[0:].seq), (p_val, label)))
 
         if self.dataset_trans:
             return tuple(self.dataset_trans(temp_list))

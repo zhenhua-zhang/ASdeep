@@ -7,11 +7,18 @@ import logging
 import argparse
 
 from typing import Union
+from itertools import accumulate
 
-import numpy as np
 import pandas as pd
 import gffutils as gut
 import matplotlib.pyplot as plt
+
+from .zutils import CHRLEN, fdr_bh
+
+# Start position of each chromosome when binned by genomic coordination
+xmax_list = accumulate(CHRLEN.values())
+xmin_list = accumulate([0] + list(CHRLEN.values())[:-1])
+CHRSPAN = dict(zip(CHRLEN.keys(), zip(xmin_list, xmax_list)))
 
 
 class ASEReport:
@@ -93,9 +100,10 @@ class ASEReport:
     # Draw a heatmap of p-vales per gene across the genome.
     def _pr_draw_p_val_htmp(self):
         # Transform p-values by -log10()
+        min_10_exp = sys.float_info.min_10_exp
         pval_matrix = (self.pvm_raw
                        .fillna(1)
-                       .apply(lambda x: [-math.log10(e) if e>0 else -sys.float_info.min_10_exp for e in x]))
+                       .apply(lambda x: [-math.log10(e) if e > 0 else -min_10_exp for e in x]))
 
         # Heatmap
         figsize = [x / 2 if x < 200 else 100 for x in pval_matrix.shape]
@@ -109,35 +117,31 @@ class ASEReport:
 
     # Show the number of individuals is ASE for the gene.
     def _pr_draw_ase_gene_count_across_genome(self, figheight=9, figwidth=16):
-        mtrx = self.pvm_bycoord
-
-        chr_len_pl = mtrx['chrom'].value_counts()
-        chr_len_pl.index = [int(x) for x in chr_len_pl.index]
-        chr_len_pl = chr_len_pl.sort_index()
-
-        chrom_vspan = [[0, xmax] if idx == 0 else [sum(chr_len_pl[:idx]), sum(chr_len_pl[:idx+1])]
-                       for idx, xmax in enumerate(chr_len_pl) ]
-
-        mtrx = mtrx.loc[:, [x for x in mtrx.columns if x not in ['chrom', 'pos']]]
-        ase_gene_count = mtrx[mtrx < self.alpha].count(axis=1) / (mtrx.shape[1] - 1) * 100
+        mtrx = (self.pvm_bycoord
+                .loc[:, ['chrom', 'pos', 'ratio']]
+                .apply(axis=1, result_type='expand',
+                       func=lambda x: {'P': CHRSPAN[x['chrom']][0] + x['pos'], 'R': x['ratio']}))
 
         fig, axes = plt.subplots()
         axes.set_title('Percentage of ASE genes across the genome')
-        axes.plot(ase_gene_count.index, ase_gene_count, linewidth=0.5, color='k', ds="steps")
+        axes.stem(mtrx.loc[:, 'P'], mtrx.loc[:, 'R'] * 100, linefmt='black', markerfmt='k.',
+                  use_line_collection=True)
 
-        for idx, (xmin, xmax) in enumerate(chrom_vspan):
+        chr_xticks, chr_labels = [], []
+        for idx, (chrom, (xmin, xmax)) in enumerate(CHRSPAN.items()):
+            chr_xticks.append(sum([xmin, xmax]) / 2)
+            chr_labels.append(chrom)
+
             color = '0.5' if idx % 2 == 0 else '1'
             axes.axvspan(xmin=xmin, xmax=xmax, ymin=0, facecolor=color, alpha=0.2)
 
-        chr_xticks = [xmax/2 if idx==0 else (sum(chr_len_pl[:idx]) + sum(chr_len_pl[:idx+1]))/2
-                      for idx, xmax in enumerate(chr_len_pl)]
         axes.set_xticks(chr_xticks)
-
-        chr_labels = [str(x) for x in chr_len_pl.index]
         axes.set_xticklabels(chr_labels, rotation=45, rotation_mode='anchor', ha='right')
+        axes.set_xlim((-CHRLEN['1'] / 3, CHRSPAN['22'][1] + CHRLEN['1'] / 3))
 
         axes.set_xlabel('Genome coordination (gene binned by pos., {})'.format(mtrx.shape[0]))
-        axes.set_ylabel('Percentage (out of {})'.format(mtrx.shape[1] - 1))
+        axes.set_ylabel('Percentage (out of {})'.format(self.pvm_bycoord.shape[1] - 2))
+        axes.set_ylim((0, 65))
 
         fig.set_figheight(figheight)
         fig.set_figwidth(figwidth)
@@ -193,24 +197,6 @@ class ASEReport:
         return self
 
 
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-l', '--log-file', dest='log_file', default=None, metavar='FILE',
-                        help='The file into which logging write.')
-    parser.add_argument('-v', '--verbose-level', action='count', dest='verbose_level', default=2,
-                        help='Verbose level. A counting keyword argument.')
-    parser.add_argument('-p', '--file-path', required=True, dest='file_path_pool', nargs='*', metavar='FILE',
-                        help='The pattern to read input files.')
-    parser.add_argument('-f', '--gene-feature-db', required=True, dest='gene_feature_db', metavar='FILE',
-                        help='The file (GFF/GTF) from which read the gene feature.')
-    parser.add_argument('-e', '--exclude-from', default=None, dest='exclude_from', metavar='FILE',
-                        help='Exclude gene ID from the file.')
-    parser.add_argument('-o', '--save-path', default='asedlp_report', dest='save_path', metavar='PATH',
-                        help='The path into which save the prediction results. Default: %(default)s')
-
-    return parser
-
-
 def main():
     parser = get_args()
     args = parser.parse_args()
@@ -232,7 +218,7 @@ def main():
 
     (ASEReport(file_path_pool, save_path, gene_feature_db, black_list=black_list)
      .save_pval_matrices()
-     .save_figures(figheight=2))
+     .save_figures(figheight=4, figwidth=24))
 
 
 if __name__ == '__main__':

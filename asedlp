@@ -15,10 +15,10 @@ Dependency (Python 3.7.x):
     - Numpy
     - Matplotlib
     - Pandas
-    - Pyfaidx (?)
-    - PyVcf (?)
-    - PyTorch (>= 1.3.0)
-    - torchvision (>=0.4.2)
+    - Pyfaidx
+    - PyVcf
+    - PyTorch
+    - torchvision
 
 Usage:
     ./asedlp {quantify, train, predict}
@@ -30,8 +30,6 @@ TDOO:
 import sys
 import logging
 import argparse
-
-import numpy
 
 
 def get_args():
@@ -74,10 +72,20 @@ def get_args():
     quant_parser.add_argument('-F', '--shift-factor', default=1e3, dest='shift_factor', metavar='INTEGER',
                               help='Number of base pairs shift from the start codon, the strand will be considered. Default: %(default)s')
 
+    report_parser = sub_parsers.add_parser('report', help='Report the quantified ASE effects')
+    report_parser.add_argument('-p', '--file-path', required=True, dest='file_path_pool', nargs='+', metavar='FILE',
+                        help='The pattern to read input files.')
+    report_parser.add_argument('-f', '--gene-feature-db', required=True, dest='gene_feature_db', metavar='FILE',
+                        help='The file (GFF/GTF) from which read the gene feature.')
+    report_parser.add_argument('-e', '--exclude-from', default=None, dest='exclude_from', metavar='FILE',
+                        help='Exclude gene ID from the file.')
+    report_parser.add_argument('-o', '--save-path', default='asedlp_report', dest='save_path', metavar='PATH',
+                        help='The path into which save the prediction results. Default: %(default)s')
+
     train_parser = sub_parsers.add_parser('train', help='Train the model on quantified ASE effects')
-    train_parser.add_argument('-p', '--file-path', required=True, dest='file_path_pool', metavar='FILE', nargs='*',
+    train_parser.add_argument('-p', '--file-path', required=True, dest='file_path_pool', metavar='FILE', nargs='+',
                               help='The pattern to read input files.')
-    train_parser.add_argument('-g', '--gene-id', default='all', dest='gene_id', metavar='STRING',
+    train_parser.add_argument('-g', '--gene-id', required=True, nargs='+', dest='gene_id_pool', metavar='STRING',
                               help='The Ensembl id of a gene for which train the model. Default: %(default)s')
     train_parser.add_argument('-s', '--model-state-path', default='./asedlp_model.pth', dest='model_state_path', metavar='FILE',
                               help='The path to which save the model state dict. Default: %(default)s')
@@ -93,6 +101,8 @@ def get_args():
                               help='Batch size. Default: %(default)s')
     train_parser.add_argument('--pp-train', default=.9, type=float, dest='pp_train', metavar='FLOAT',
                               help='The propotion of dataset will be used as training set. Default: %(default)s')
+    train_parser.add_argument('--hbcurve-order', default=64, type=int, dest='hborder', metavar='INTEGER',
+                              help='The order Helbert curve for per input. Default: %(default)s')
     train_parser.add_argument('--log-per-n-epoch', default=5, type=int, dest='log_per_n_epoch', metavar='INTEGER',
                               help='Number of epoch for each evaluation point. Default: %(default)s')
 
@@ -125,27 +135,41 @@ def quantify(args):
     if seq_only and ase_only:
         raise ValueError('--seq-only and --ase-only are mutually exclusive!')
     elif seq_only:
-        (Quantifier(args)
-         .gen_gnm_itvl()
-         .gen_seq()
-         .save_train_set())
+        (Quantifier(args).gen_gnm_itvl().gen_seq().save_train_set())
     elif ase_only:
-        (Quantifier(args)
-         .gen_gnm_itvl()
-         .gen_ase()
-         .save_ase_report())
+        (Quantifier(args).gen_gnm_itvl().gen_ase().save_ase_report())
     else:
-        (Quantifier(args)
-         .gen_gnm_itvl()
-         .gen_seq()
-         .gen_ase()
-         .save_ase_report()
-         .save_train_set())
+        (Quantifier(args).gen_gnm_itvl().gen_seq().gen_ase()
+         .save_ase_report().save_train_set())
+
+
+def report(args):
+    '''Generate a report for the quantified ASE effects'''
+    try:
+        from asedeep.report import ASEReport
+    except ImportError as ime:
+        logging.error('Import error: {}'.format(ime))
+        sys.exit(1)
+
+    save_path = args.save_path
+    exclude_from = args.exclude_from
+    file_path_pool = args.file_path_pool
+    gene_feature_db = args.gene_feature_db
+
+    black_list = []
+    if exclude_from is not None:
+        with open(exclude_from) as ifhandle:
+            black_list = [x.strip() for x in ifhandle]
+
+    (ASEReport(file_path_pool, save_path, gene_feature_db, black_list=black_list)
+     .save_pval_matrices()
+     .save_figures(figheight=4, figwidth=24))
 
 
 def train(args):
     '''Train a CNN model.'''
     try:
+        import numpy
         import torch
         import torch.nn as nn
         import torchvision.models as models
@@ -155,7 +179,8 @@ def train(args):
         sys.exit(1)
 
     file_path_pool = args.file_path_pool
-    gene_id = args.gene_id
+    gene_id_pool = args.gene_id_pool
+    hborder = args.hborder
     n_epoch = args.n_epoch
     pp_train = args.pp_train
     batch_size = args.batch_size
@@ -172,10 +197,10 @@ def train(args):
 
     # It is feasible to use the CAM as there's AdaptiveAvgPool2d layer.
     net = models.resnext50_32x4d()
-    net.conv1 = nn.Conv2d(1, 64, (7, 7), (2, 2), (3, 3), bias=False)
+    net.conv1 = nn.Conv2d(1, hborder, (7, 7), (2, 2), (3, 3), bias=False)
     net.fc = nn.Linear(in_features=2048, out_features=3, bias=True)
 
-    (Trainer(net, gene_id, file_path_pool, logging_path, log_per_n_epoch)
+    (Trainer(net, gene_id_pool, file_path_pool, logging_path, log_per_n_epoch)
      .init()
      .load_dataset()
      .train_test_split(pp_train)
@@ -215,6 +240,8 @@ def main():
 
     if args.subcmd == 'quantify':
         quantify(args)
+    elif args.subcmd == 'report':
+        report(args)
     elif args.subcmd == 'train':
         train(args)
     elif args.subcmd == 'predict':

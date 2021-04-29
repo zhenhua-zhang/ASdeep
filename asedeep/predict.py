@@ -104,7 +104,7 @@ class Predictor:
     def _draw_cam_along_seq(self, save_path, title):
         fig, ax = plt.subplots()
         height = self._seq_img.shape[0]
-        average_cam = self._seq_img    # 255 is the scale factor
+        average_cam = self._seq_img
 
         ax.plot(range(height), average_cam)
         ax.set_title(title)
@@ -145,7 +145,7 @@ class Predictor:
 
     def predict(self, save_path, matrix_idx=None, show_cam=False):
         matrix_idx = self._check_matrix_idx(matrix_idx)
-        lable_dict = {0: 'ASEtoA', 1: 'NonASE', 2: 'ASEtoB'}
+        lable_dict = {0: 'ASEtoA', 1: 'NonASE', 2: 'ASEtoB', None: 'Unknown'}
 
         logging.info('TrueLabel | PredLabel | PredProb')
         for idx in matrix_idx:
