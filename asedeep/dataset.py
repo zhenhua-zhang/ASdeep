@@ -146,22 +146,19 @@ class ASEDataset(Dataset):
         temp_list = []
         for file_path in self.file_path_pool:
             seq_pool = pyfaidx.Fasta(file_path)
+            record_list = [seq_pool[idx] for idx in seq_pool.keys()
+                           if any([_gene_id in idx for _gene_id in self.gene_id])]
 
-            for gene_id in self.gene_id:
-                record = [seq_pool[idx] for idx in seq_pool.keys() if gene_id in idx][0]
-
+            for record in record_list:
                 if record is None or len(record) == 0:
-                    _err_msg = 'No \'{}\' in \'{}\''.format(gene_id, file_path)
+                    _err_msg = 'No \'{}\' in \'{}\''.format(self.gene_id, file_path)
                     logging.warning(_err_msg)
                     temp_list.append((None, None, None))
                 else:
-                    record_list = record.name.split('|')
-                    if len(record_list) > 2:
-                        p_val_bn, p_val_bb, label = record.name.split('|')[2:5]
-                        if self.use_bb_pval:
-                            p_val = p_val_bb
-                        else:
-                            p_val = p_val_bn
+                    record_name_list = record.name.split('|')
+                    if len(record_name_list) > 2:
+                        p_val_bn, p_val_bb, label = record_name_list[2:5]
+                        p_val = p_val_bb if self.use_bb_pval else p_val_bn
                         p_val, label = float(p_val), int(label)
                     else:
                         p_val, label = None, None
