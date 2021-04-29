@@ -1,7 +1,7 @@
 ---
 title: Allele-Specific Expression Deep Learning Predictor - asedlp
 author: Zhenhua Zhang
-date: 2021年4月
+date: April, 2021
 linkcolor: blue
 geometry: margin=25mm
 CJKmainfont: Source Han Sans SC
@@ -32,14 +32,14 @@ header-includes:
 ## Directory tree
 Current dir: `~/Documents/projects/wp_ase_dlp`
 
-| Name      | Type                       | Function                                                         |
-| :---      | :---                       | :---                                                             |
-| README.md | Regular file or soft link  | This file itself, or a soft link to the README[.md] in scripts/. |
-| inputs/   | Directory                  | Any files not produced during current project.                   |
-| outputs/  | Directory                  | Final output that will be published or shared.                   |
-| scripts/  | Directory                  | Any scripts use in current project                               |
-| misc/     | Directory                  | Any files not grouped into other directories.                    |
-| temps/    | Directory                  | Temporary files                                                  |
+| Name      | Type                       | Function                                               |
+| :---      | :---                       | :---                                                   |
+| README.md | Regular file or soft link  | Itself, or a soft link to the README[.md] in scripts/. |
+| inputs/   | Directory                  | Any files not produced during current project.         |
+| outputs/  | Directory                  | Final output that will be published or shared.         |
+| scripts/  | Directory                  | Any scripts use in current project                     |
+| misc/     | Directory                  | Any files not grouped into other directories.          |
+| temps/    | Directory                  | Temporary files                                        |
 
 
 ## Overview of dataset
@@ -375,6 +375,14 @@ BIOS里面一共有6个小的队列组成，每个队列的genotype都是独自�
 这降低了基因型插补后的SNP数量，间接降低了杂合位点的数量，从而导致ASE基因的数量也减少？
 所以，我现在准备整合所有队列，然后一起做单倍型定相。
 这样做会存在什么问题吗？
+
+如果我们先过滤variant（INFO/R2 >= 0.3），然后merge后再过滤（MAF >= 0.005），variant的数量反而减少了。
+此处需要注意，MAF是根据携带variant的人的数量计算的。
+例如，若某variant仅在一个cohort中存在，则该variant的MAF仅使用该cohort的人来计算。
+
+## 从头开始做imputation和phaing
+1. 把所有的芯片的基因型组合到一起然后用Michigan Imputation Server
+2. 如果返回的结果未单倍型定相，可以再用Beagle等做定相。
 
 
 ## Genotype座标转换
