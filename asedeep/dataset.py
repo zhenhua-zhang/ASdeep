@@ -14,9 +14,9 @@ import logging
 
 import pyfaidx
 from torch.utils.data import Dataset
-from statsmodels.sandbox.stats.multicomp import multipletests
 
 from .hbcurve import HelbertCurve
+from .zutils import fdr_bh
 
 
 class MultipleTestAdjustment:
@@ -39,9 +39,9 @@ class MultipleTestAdjustment:
             mtrx_pool.append(matrix)
             label_pool.append(label)
 
-        pval_pool = multipletests(pval_pool, alpha=self.alpha, method=self.method)
+        pval_pool = fdr_bh(pval_pool)
 
-        return tuple(zip(mtrx_pool, tuple(zip(pval_pool[1], label_pool))))
+        return tuple(zip(mtrx_pool, tuple(zip(pval_pool, label_pool))))
 
 
 class ReshapeMatrixAndPickupLabel:
@@ -121,6 +121,12 @@ class ASEDataset(Dataset):
     def __init__(self, gene_id, file_path_pool, element_trans=None, dataset_trans=None,
                  use_bb_pval=False):
         self.gene_id = gene_id
+
+        if isinstance(gene_id, str):
+            self.gene_id = [gene_id]
+        elif not isinstance(gene_id, (list, tuple)):
+            raise ValueError("gene_id should be a list/tuple/str!")
+
         self.element_trans = element_trans
         self.dataset_trans = dataset_trans
         self.file_path_pool = file_path_pool
@@ -138,29 +144,29 @@ class ASEDataset(Dataset):
     def _load_data(self):
         # Load dataset.
         temp_list = []
-        for idx in range(len(self)):
-            file_path = self.file_path_pool[idx]
-
+        for file_path in self.file_path_pool:
             seq_pool = pyfaidx.Fasta(file_path)
-            record = [seq_pool[idx] for idx in seq_pool.keys() if self.gene_id in idx][0]
 
-            if record is None or len(record) == 0:
-                _err_msg = 'No \'{}\' in \'{}\''.format(self.gene_id, file_path)
-                logging.warning(_err_msg)
-                temp_list.append((None, None, None))
-            else:
-                record_list = record.name.split('|')
-                if len(record_list) > 2:
-                    p_val_bn, p_val_bb, label = record.name.split('|')[2:5]
-                    if self.use_bb_pval:
-                        p_val = p_val_bb
-                    else:
-                        p_val = p_val_bn
-                    p_val, label = float(p_val), int(label)
+            for gene_id in self.gene_id:
+                record = [seq_pool[idx] for idx in seq_pool.keys() if gene_id in idx][0]
+
+                if record is None or len(record) == 0:
+                    _err_msg = 'No \'{}\' in \'{}\''.format(gene_id, file_path)
+                    logging.warning(_err_msg)
+                    temp_list.append((None, None, None))
                 else:
-                    p_val, label = None, None
+                    record_list = record.name.split('|')
+                    if len(record_list) > 2:
+                        p_val_bn, p_val_bb, label = record.name.split('|')[2:5]
+                        if self.use_bb_pval:
+                            p_val = p_val_bb
+                        else:
+                            p_val = p_val_bn
+                        p_val, label = float(p_val), int(label)
+                    else:
+                        p_val, label = None, None
 
-                temp_list.append((str(record[0:].seq), (p_val, label)))
+                    temp_list.append((str(record[0:].seq), (p_val, label)))
 
         if self.dataset_trans:
             return tuple(self.dataset_trans(temp_list))

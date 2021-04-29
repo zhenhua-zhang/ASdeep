@@ -10,7 +10,7 @@ import sys
 import copy
 import numpy as np
 
-from collections import UserDict
+from collections import UserDict, OrderedDict
 
 # Reference: https://genomevolution.org/wiki/index.php/Ambiguous_nucleotide
 M2B = { # monoallelic base-pair to biallelic base.
@@ -28,6 +28,15 @@ B2M = { # Biallelic base to monoallelic base-pair
     'w': 'TA', 'y': 'TC', 'k': 'TG', 'T': 'TT',
     'N': 'NN'
 }
+
+# The length of chromosome by GRCh37. Ordered by Chromosome. Only autosomes.
+# 'X':  155270560, 'Y':  59373566
+CHRLEN = OrderedDict(
+    {'1':  249250621, '2':  243199373, '3':  198022430, '4':  191154276, '5':  180915260,
+     '6':  171115067, '7':  159138663, '8':  146364022, '9':  141213431, '10': 135534747,
+     '11': 135006516, '12': 133851895, '13': 115169878, '14': 107349540, '15': 102531392,
+     '16': 90354753,  '17': 81195210,  '18': 78077248,  '19': 59128983,  '20': 63025520,
+     '21': 48129895,  '22': 51304566})
 
 
 def print_arguments(arguments, fwidth: int=0, to_head=('subcommand',)):
@@ -152,5 +161,5 @@ def fdr_bh(p):
     o = np.argsort(-p)
     ro = np.argsort(o)
     
-    return np.clip(np.minimum.accumulate(l / np.arange(l, 0, -1) * p[o])[ro], .0, 1.)
+    return np.clip(np.minimum.accumulate(l / np.arange(l, 0, -1) * p[o])[ro], .0, 1.).tolist()
 

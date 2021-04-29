@@ -29,7 +29,8 @@ from .dataset import ASEDataset, SeqToHelbertAndMakeLabel, MultipleTestAdjustmen
 
 class Trainer:
     '''A class to train the neuroal network.'''
-    def __init__(self, net, gene_id=None, file_path_pool=None, logging_path=None, log_per_n_epoch=5):
+    def __init__(self, net, gene_id=None, file_path_pool=None, logging_path=None,
+                 log_per_n_epoch=5):
         self.net = net                         # NN model will be used
         self.gene_id = gene_id                 # The gene ID on which will train the model
         self.logging_path = logging_path       # Path for the TensorBoard logs
@@ -129,12 +130,15 @@ class Trainer:
                     x = 0
                 self.writer.add_scalars('ROC_AUC_curve/{}'.format(tag), {str(class_idx): tpr[idx]}, x)
 
-    def _train(self, eps, optimizer, device, criterion, splits, batch_size, shuffle, num_workers, log_per_n_epoch=5):
+    def _train(self, eps, optimizer, device, criterion, splits, batch_size, shuffle, num_workers,
+               log_per_n_epoch=5):
         # The exact implementation of train.
         logging.info('CV | Action | Epoch | Accu.  | Prec.  | Recall | ROCAUC | Loss')
         for cv_idx, (train_idx, test_idx) in enumerate(splits):
-            trainloader = DataLoader(Subset(self.dataset, train_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-            testloader = DataLoader(Subset(self.dataset, test_idx), batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+            trainloader = DataLoader(Subset(self.dataset, train_idx), batch_size=batch_size,
+                                     shuffle=shuffle, num_workers=num_workers)
+            testloader = DataLoader(Subset(self.dataset, test_idx), batch_size=batch_size,
+                                    shuffle=shuffle, num_workers=num_workers)
 
             cv_loss_list = []
             for epoch in range(eps):
@@ -207,7 +211,16 @@ class Trainer:
         element_trans = kwargs.get('element_trans', SeqToHelbertAndMakeLabel())
         dataset_trans = kwargs.get('dataset_trans', MultipleTestAdjustment())
 
-        self.dataset = ASEDataset(file_path_pool=file_path_pool, gene_id=gene_id, element_trans=element_trans, dataset_trans=dataset_trans)
+        if isinstance(gene_id, str):
+            gene_id = [gene_id]
+        elif not isinstance(gene_id, (tuple, list)):
+            raise ValueError("gene_id should be a list/tuple/str!")
+
+        # Chain sequences of mutliple gene ID.
+        self.dataset = ASEDataset(file_path_pool=file_path_pool,
+                                  gene_id=gene_id,
+                                  element_trans=element_trans,
+                                  dataset_trans=dataset_trans)
 
         return self
 
