@@ -83,7 +83,7 @@ SAMtoolsVer=SAMtools/1.10-GCC-9.3.0
 EOF
     
     # For Geuvadis samples, ought to download their FASTQ files from ftp://ftp.sra.ebi.ac.uk/vol1/fastq
-    echo "echo \$LINENO" \
+    echo "echo -ne \$LINENO: " \
          "&& curl -C- $baseUrl/$fastqId/${fastqId}_1.fastq.gz" \
          "--output $projDir/outputs/aseQuan_v2/$cohortId/tmpDir/${fastqId}_R1.fq.gz" \
          "&& curl -C- $baseUrl/$fastqId/${fastqId}_2.fastq.gz" \

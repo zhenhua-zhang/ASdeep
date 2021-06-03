@@ -14,10 +14,9 @@ while read -a dnagen_to_rnaseq; do
     fastqId=${dnagen_to_rnaseq[2]}
     cohortId=${dnagen_to_rnaseq[3]}
 
-    # metarunfile=$pjdir/scripts/configs/$cohortId-metarun.sh
-    metarunfile=$pjdir/scripts/configs/$cohortId-metarun-aseq.sh
+    metarunfile=$pjdir/scripts/configs/BIOS-metarun-aseq.sh
     if [[ ! -e $metarunfile ]]; then
-        echo -e '#Config meta files for '$cohortId > $metarunfile
+        echo -e '#Config meta files for BIOS' > $metarunfile
         echo -e 'set -Eeu -o pipefail' >> $metarunfile
     fi
 
@@ -67,7 +66,7 @@ fastqPrefix=
 fastqSuffix=.fq.gz
 
 # Gene ids
-geneIdFile=\$projDir/inputs/Ensembl_references/protein_coding_gene_id.txt
+geneIdFile=\$projDir/outputs/aseReports/summary/BIOS_ASE_genes.txt
 
 # Tools versions, Python virtual env
 pyEnv=~/Documents/projects/wp_ase_dlp/scripts/.env
@@ -82,6 +81,6 @@ SAMtoolsVer=SAMtools/1.9-foss-2018b
 # vim: set nowrap ft=sh ts=4 tw=120:
 EOF
 # For BIOS samples you have to rsync files from the old machine (calculon.hpc.rug.nl) to the new one (gearshift.hpc.rug.nl)
-    # echo "echo \$LINENO && rsync -avzh umcg-zzhang@172.23.34.247:$fqdir/${fastqId}_* $pjdir/outputs/aseQuan_v2/$cohortId/tmpDir/ && $pjdir/scripts/bin/SbatchAseQuantPipeline -c $conffile" >> $metarunfile
-    echo "echo \$LINENO && $pjdir/scripts/bin/SbatchAseQuantPipeline -c $conffile" >> $metarunfile
+    # echo "echo -ne \$LINENO: && rsync -avzh umcg-zzhang@172.23.34.247:$fqdir/${fastqId}_* $pjdir/outputs/aseQuan_v2/$cohortId/tmpDir/ && $pjdir/scripts/bin/SbatchAseQuantPipeline -c $conffile" >> $metarunfile
+    echo "echo -ne \$LINENO: && $pjdir/scripts/bin/SbatchAseQuantPipeline-aseq -c $conffile" >> $metarunfile
 done < ${idmapfile}
