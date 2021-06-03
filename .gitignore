@@ -11,6 +11,8 @@ _archived/
 .env/
 .idea/
 .vscode/
+**/.ipynb_checkpoints/
+configs/
 
 # Never track binary files including: pdf
 README.pdf
