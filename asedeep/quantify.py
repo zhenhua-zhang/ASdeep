@@ -189,11 +189,6 @@ class Quantifier:
     _sample_id = None  # Static
     _gene_ids = None   # Static
 
-    variant_pool = None
-    sequence_pool = None
-    gene_features = None
-    readcount_pool = None
-
     def __init__(self, args):
         super(Quantifier, self).__init__()
         self.args = args
@@ -217,7 +212,7 @@ class Quantifier:
 
         if self.args.ase_readcount_file:
             self.ase_readcounts = pandas.read_csv(self.args.ase_readcount_file, sep=None,
-                                                  engine="python")
+                                                  engine="python", converters={"contig": str})
         else:
             raise FileNotFoundError("No ASE read counts file was given or it's not accessible!")
 
@@ -272,8 +267,8 @@ class Quantifier:
 
     # Get the read counts in the genomic interval
     def _pr_get_readcounts(self, chrom, start, end) -> pandas.DataFrame:
-        return (self.ase_readcounts
-                .query("contig=={} & {}<=position & position<={}".format(chrom, start, end)))
+        query_str = "contig == '{}' & {} <= position & position <= {}".format(chrom, start, end)
+        return (self.ase_readcounts.query(query_str))
 
     # Fetch ambiguous
     @staticmethod
@@ -284,7 +279,7 @@ class Quantifier:
     def _pr_gen_ase_seq(self, itvl: gffutils.Feature, shift=5e2):
         chrom, start, end, strand = itvl.chrom, itvl.start, itvl.end, itvl.strand
         if strand == "+":
-            start, end = start - shift, start
+            start, end = max(1, start - shift), start
         else:
             start, end = end, end + shift
 
@@ -376,7 +371,7 @@ class Quantifier:
         if shift_factor <= 0:
             shift_factor = self.args.shift_factor
 
-        shift = 2 * math.ceil(math.sqrt(shift_factor)) ** 2
+        shift = math.ceil(math.sqrt(shift_factor)) ** 2
 
         if self.mrna_pool:  # Not empty
             self.seq_pool = {
@@ -438,7 +433,7 @@ class Quantifier:
 
         Args:
             opt_file (str, optional, None): The output file.
-            save_fmt (str, optional, fa.gz): output format. ["fa", "fa.gz"]
+            save_fmt (str, optional, fa): output format. ["fa", "fa.gz"]
 
         Returns:
             self (:obj:`ASEFactory`): The object itself.

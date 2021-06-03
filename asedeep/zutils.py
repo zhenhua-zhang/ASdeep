@@ -6,6 +6,7 @@
 # Created on : Mon 22 Jun 2020 11:25:03 AM CEST
 
 
+import re
 import sys
 import copy
 import numpy as np
@@ -65,9 +66,7 @@ def print_arguments(arguments, fwidth: int=0, to_head=('subcommand',)):
 
 
 class SmartDict(UserDict):
-    '''Container for the data set.
-    '''
-
+    '''Container for the data set.'''
     def __init__(self):
         super().__init__()
         self.data = {}
@@ -148,14 +147,14 @@ def fdr_bh(p):
         StackOverflow: https://stackoverflow.com/a/7451153/11203559
         BH = {
             i <- lp:1L   # lp is the number of p-values
-            o <- order(p, decreasing = TRUE) # "o" will reverse sort the p-values
+            o <- order(p, decreasing = TRUE) # 'o' will reverse sort the p-values
             ro <- order(o)
             pmin(1, cummin(n/i * p[o]))[ro]  # n is also the number of p-values }
     '''
     p = np.asfarray(p)
     
     if (p < 0).any() or (1.0 < p).any():
-        raise ValueError("P values should be between 0 and 1")
+        raise ValueError('P values should be between 0 and 1')
 
     l = len(p)
     o = np.argsort(-p)
@@ -163,3 +162,19 @@ def fdr_bh(p):
     
     return np.clip(np.minimum.accumulate(l / np.arange(l, 0, -1) * p[o])[ro], .0, 1.).tolist()
 
+
+def fetch_layer_by_path(model, layer_path: str ='.layer3[-1].conv1[0]'):
+    per_access = re.findall('\.\w+|\[-?\d+\]', layer_path)
+    
+    if len(per_access) == 0:
+        return model
+
+    for item in per_access:
+        if item.startswith('.'):
+            model = getattr(model, item.replace('.', '', 1))
+        elif item.startswith('['):
+            model = model[int(item.replace('[', '').replace(']', ''))]
+        else:
+            raise ValueError('Unknown pattern was found: ' + item)
+    
+    return model

@@ -4,7 +4,6 @@ import os
 import sys
 import math
 import logging
-import argparse
 
 from typing import Union
 from itertools import accumulate
@@ -24,20 +23,17 @@ CHRSPAN = dict(zip(CHRLEN.keys(), zip(xmin_list, xmax_list)))
 class ASEReport:
     '''A class to process ASE report.'''
 
-    genome_annot: gut.FeatureDB
-    dtfm: pd.DataFrame
-    pvm_raw: pd.DataFrame
-    pvm_bycoord: pd.DataFrame
-    black_list: Union[list, None]
-    alpha: float
-    ratio: float
-
     def __init__(self, fpath_pool, save_pref, annot_db='ant_db_name.db', max_na_pergene=1500,
-                 alpha=5e-5, ratio=0.15, black_list=None):
+                 alpha=5e-2, ratio=0.10, black_list=None):
         self.save_pref = save_pref
         self.alpha = alpha
         self.ratio = ratio
         self.black_list = black_list
+
+        self.genome_annot: gut.FeatureDB
+        self.dtfm: pd.DataFrame
+        self.pvm_raw: pd.DataFrame
+        self.pvm_bycoord: pd.DataFrame
 
         self._pr_load_gtf(annot_db)
         self._pr_load_summary(fpath_pool)
@@ -92,7 +88,9 @@ class ASEReport:
                             key=lambda x: (int(x[1]), int(x[2])))
 
         _, n_samples = self.pvm_raw.shape
-        self.pvm_bycoord = self.pvm_bycoord.loc[[c[0] for c in _coord], :]
+        self.pvm_bycoord = (self.pvm_bycoord
+                            .loc[[c[0] for c in _coord], :]
+                            .apply(fdr_bh, axis=1, result_type='broadcast'))
         self.pvm_bycoord['ratio'] = self.pvm_bycoord.le(self.alpha).sum(axis=1) / n_samples
         self.pvm_bycoord['chrom'] = [c[1] for c in _coord]
         self.pvm_bycoord['pos'] = [c[2] for c in _coord]
@@ -163,7 +161,7 @@ class ASEReport:
                 sep = ','
 
             self.pvm_raw.to_csv(save_pref + '-pvm_raw.' + report_fmt, sep=sep)
-            self.pvm_bycoord.to_csv(save_pref + '-pvm_sorted_filtered.' + report_fmt, sep=sep)
+            self.pvm_bycoord.to_csv(save_pref + '-pvm_sorted_filtered_adj.' + report_fmt, sep=sep)
 
 
         return self
@@ -178,7 +176,8 @@ class ASEReport:
              .savefig(save_pref + '-ase_gene_count_across_genome.' + fig_fmt))
             plt.close('all')
 
-            ((self.pvm_raw < self.alpha)
+            pval_cols = [x for x in self.pvm_bycoord.columns if x not in ['ratio', 'chrom', 'pos']]
+            ((self.pvm_bycoord.loc[:, pval_cols] < self.alpha)
              .sum(axis=0)
              .plot(kind='density')
              .set_title('ASE genes per individual (p<{})'.format(self.alpha))
@@ -186,7 +185,7 @@ class ASEReport:
              .savefig(save_pref + '-ase_gene_per_individual.' + fig_fmt))
             plt.close('all')
 
-            ((self.pvm_raw < self.alpha)
+            ((self.pvm_bycoord.loc[:, pval_cols] < self.alpha)
              .sum(axis=1)
              .plot(kind='density')
              .set_title('Individuals per ASE gene (p<{})'.format(self.alpha))
@@ -196,30 +195,3 @@ class ASEReport:
 
         return self
 
-
-def main():
-    parser = get_args()
-    args = parser.parse_args()
-
-    log_file = args.log_file
-    save_path = args.save_path
-    exclude_from = args.exclude_from
-    verbose_level = args.verbose_level * 10
-    file_path_pool = args.file_path_pool
-    gene_feature_db = args.gene_feature_db
-
-    logging.basicConfig(filename=log_file, format='{levelname: ^8}| {asctime} | {message}',
-                        style='{', datefmt='%Y%m%d,%H:%M:%S', level=verbose_level)
-
-    black_list = []
-    if exclude_from is not None:
-        with open(exclude_from) as ifhandle:
-            black_list = [x.strip() for x in ifhandle]
-
-    (ASEReport(file_path_pool, save_path, gene_feature_db, black_list=black_list)
-     .save_pval_matrices()
-     .save_figures(figheight=4, figwidth=24))
-
-
-if __name__ == '__main__':
-    main()
