@@ -8,7 +8,7 @@
 
 set -eu -o pipefail
 
-pjdir=${HOME}/Documents/projects/wp_ase_dlp
+pjdir=~/Documents/projects/wp_ase_dlp
 ipdir=${pjdir}/inputs
 opdir=${pjdir}/outputs
 spdir=${pjdir}/scripts
@@ -59,12 +59,11 @@ case \$(hostname) in
 esac
 
 
-${spdir}/asedlp/asedlp train \
-    --file-path ${file_pat} \
-    --gene-id ${gene_id} \
-    --n-epoch ${n_epoch} \
-    --model-state-path ${model_state_path} \
-    --logging-path ${logging_path} \
-    --log-per-n-epoch 1
+${spdir}/asedlp/asedlp predict \
+    --gene-id ENSG00000026297 \
+    --file-path \
+    --save-path \
+    --model-state-path \
+    --show-attributions
 
 EOF

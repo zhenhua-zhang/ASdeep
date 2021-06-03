@@ -5,19 +5,8 @@
 # License: MIT
 
 #
-## ASE analysis pipeline by fastp, STAR, WASP, SAMtools, and GATK/ASEReadCounter
+## ASE analysis by using an in-house Python script
 #
-
-# Rsync FASTQ files from calculon
-# rsync -avzh umcg-zzhang@172.23.34.247:/groups/umcg-bios/prm02/rawdata/rnaseq/AD10W1ACXX-1-11_* .
-
-#
-## XXX: Caution!
-#
-# 1. For one sample with paired-end results about 2G in total, the intermediate files could go up to
-#    30G. Please make sure you have enough space on the devices.
-# 2. To create the SNP HDF5 database, one has to split them into individual files per chromosome,
-#    if there are more than one chromosome.
 
 #
 ## Working directory tree
@@ -41,24 +30,8 @@
 #         └── aseqTmpDir/
 
 #
-## WASP (v0.3.4) dependencies:
-#
-# Python 3.7.x
-# Python packages:
-#   - numpy==1.19.4
-#   - pandas==1.2.3
-#   - scipy==1.5.4
-#   - pysam==0.16.0.1
-#   - pyfaidx==0.5.9.5
-#   - PyVCF==0.6.8
-
-#
 ## Meta config {
 #
-
-# Load Easy-build modules
-[[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
-# } // Meta config
 
 # ENVs {
 export ASEPL_VERSION
@@ -210,6 +183,7 @@ done
 # fastqDir=$workDir/$cohortId/tmpDir
 # fastqPrefix=
 # fastqSuffix=.fq.gz
+# tissue=MSCLSK
 # 
 # # Gene ids
 # geneIdFile=$projDir/inputs/Ensembl_references/protein_coding_gene_id.txt
@@ -224,34 +198,35 @@ done
 # BCFtoolsVer=BCFtools/1.11-GCCcore-7.3.0
 # SAMtoolsVer=SAMtools/1.9-foss-2018b
 
+
 # # Job dependency
 afterok="--dependency=afterok"  # XXX: the colon after the afterok is maully added
 # # } // Config
 
-debug=false
-if [[ $debug == true ]]; then
-    qos='priority'
-else
-    qos='regular'
-fi
 
+#
+## Create the working directory tree
+#
+# TODO: Some directories are not necessary
+mkdir -p $logDir \
+    $tmpDir/$fastqId/{fastp,star,wasp,gatk,aseq}TmpDir \
+    $optDir/$fastqId/{fastp,star,wasp,gatk,aseq}OptDir
 
 #
 ## aseq estimates ASE effects {
 #
-mem=8G
-cpus=2
-time=4:59:00
+mem=4G
+cpus=1
+time=9:59:00
 stepName=AseqASEEstimation
 dependency=$afterok:$GatkASEReadCounterJobId
 if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
 AseqASEEstimationJobId=$(sbatch $dependency \
-    --mem=$mem \
-    --qos=$qos \
-    --time=$time \
-    --cpus-per-task=$cpus \
-    --job-name=$fastqId-$stepName \
-    --output=$logDir/%j-$fastqId-$stepName.log \
+    --mem $mem \
+    --time $time \
+    --cpus-per-task $cpus \
+    --job-name $fastqId-$stepName \
+    --output $logDir/%j-$fastqId-$stepName.log \
     <<EOF | cut -d' ' -f4
 #!/bin/bash
 [[ -f /apps/modules/modules.bashrc ]] && source /apps/modules/modules.bashrc
@@ -260,15 +235,7 @@ set -Ee -o pipefail
 module load $PythonVer
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
 
-python $projDir/scripts/asedlp quantify \
-    -v $vcfFile \
-    -i $sampleId \
-    -G $geneIdFile \
-    -s $genomeFastaFile \
-    -f $genomeAnnotationFile \
-    -r $gatkOptDir/$fastqId.gatkAlleleReadCounts.csv \
-    -T $aseqOptDir/$fastqId-dup-train-set_500k.fa.gz \
-    -R $aseqOptDir/$fastqId-dup-train-report_subset.txt &
+cp $workDir/$cohortId/$tissue/$fastqId.v8.wasp_corrected.ase_table.$tissue.csv $gatkOptDir
 
 python $projDir/scripts/asedlp quantify \
     -v $vcfFile \
@@ -276,11 +243,9 @@ python $projDir/scripts/asedlp quantify \
     -G $geneIdFile \
     -s $genomeFastaFile \
     -f $genomeAnnotationFile \
-    -r $gatkOptDir/$fastqId.nondup.gatkAlleleReadCounts.csv \
-    -T $aseqOptDir/$fastqId-nondup-train-set_500k.fa.gz \
-    -R $aseqOptDir/$fastqId-nondup-train-report_subset.txt &
-
-wait
+    -r $gatkOptDir/$fastqId.v8.wasp_corrected.ase_table.$tissue.csv \
+    -T $aseqOptDir/$fastqId-nondup-$tissue-train-set_500k.fa \
+    -R $aseqOptDir/$fastqId-nondup-$tissue-train-report_subset.txt
 EOF
 )
 echoInfo "$stepName was submitted: $AseqASEEstimationJobId ..."

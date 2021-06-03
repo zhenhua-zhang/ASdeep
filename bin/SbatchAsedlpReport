@@ -5,35 +5,41 @@
 
 set -eu -o pipefail
 
-projdir=$HOME/Documents/projects/wp_ase_dlp
+projdir=~/Documents/projects/wp_ase_dlp
 iptdir=$projdir/inputs
 optdir=$projdir/outputs
 
-cohort=RS
+cohort=$1
+tissue=MSCLSK
 
 output_dir=$optdir/aseReports/$cohort
 sbatch_job_name=$cohort-asedlp-report
 sbatch_log_path=$output_dir/%j-%u-asedlp-report.log
 
-sbtime=0:5:0
-sbmem=4G
+reqtime=0:10:0
+reqmem=2G
 case $cohort in
-    bios_geuvadis)
-        file_pat=$projdir'/outputs/aseQuan_v2/*/optDir/*/aseqOptDir/*-dup-*.txt'
-        sbtime=0:29:0
-        sbmem=8G
+    BIOS)
+        bios='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,NTR_Affy6,RS,gonl}'
+        file_pat=$projdir/outputs/aseQuan_v2/$bios/optDir/'*/aseqOptDir/*-dup-*.txt'
+        reqtime=0:29:0
+        reqmem=16G
         ;;
-    bios)
-        bios_cohorts='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,RS,gonl}'
-        file_pat=$projdir/outputs/aseQuan_v2/$bios_cohorts/optDir/'*/aseqOptDir/*-dup-*.txt'
-        sbtime=0:29:0
-        sbmem=8G
-        ;;
-    gtex)
-        file_pat=$projdir/outputs/aseQuan_v2/GTEx/optDir/'*/aseqOptDir/*-dup-*.txt'
+    BIOS_Geuvadis)
+        bios_geuvadis='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,NTR_Affy6,RS,gonl,Geuvadis}'
+        file_pat=$projdir/outputs/aseQuan_v2/$bios_geuvadis'/optDir/*/aseqOptDir/*-dup-*.txt'
+        reqtime=0:29:0
+        reqmem=16G
         ;;
     CODAM|LL|LLS_660Q|LLS_OminExpr|PAN|RS|gonl|Geuvadis)
         file_pat=$projdir/outputs/aseQuan_v2/$cohort/optDir/'*/aseqOptDir/*-dup-*.txt'
+        ;;
+    GTEx)
+        reqtime=0:10:0
+        reqmem=8G
+        file_pat=$projdir/outputs/aseQuan_v2/$cohort/optDir/'*/aseqOptDir/*-nondup-'$tissue'-*.txt'
+        output_dir=$output_dir/$tissue
+        sbatch_log_path=$output_dir/%j-%u-asedlp-report.log
         ;;
     *)
         echo Unknown cohort
@@ -46,8 +52,8 @@ if [[ ! -d $output_dir ]]; then
 fi
 
 sbatch \
-    --mem=$sbmem \
-    --time=$sbtime \
+    --mem=$reqmem \
+    --time=$reqtime \
     --output=$sbatch_log_path \
     --job-name=$sbatch_job_name <<EOF
 #!/bin/bash
@@ -75,7 +81,7 @@ case \$(hostname) in
 esac
 
 source $projdir/scripts/.env/bin/activate
-python $projdir/scripts/misc/asedlp_report.py \
+python $projdir/scripts/asedlp report \
     -p $file_pat \
     -f $iptdir/Ensembl_references/Homo_sapiens.GRCh37.75.db \
     -e $iptdir/Ensembl_references/MHClocus-geneid.txt \

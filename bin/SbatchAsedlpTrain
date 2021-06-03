@@ -5,62 +5,102 @@
 
 set -eu -o pipefail
 
+# Workspace
 projdir=$HOME/Documents/projects/wp_ase_dlp
 iptdir=$projdir/inputs
 optdir=$projdir/outputs
 
-time_stamp=$(date +%Y%m%d_%H%M%S)
+# Parameters. tissue variable only works when cohort_id is gtex
+cohort_id=BIOS
+tissue=WHLBLD
+n_epoch=100
+# ENSG00000108405 ENSG00000127507 ENSG00000090382
+gene_id=ENSG00000026297
+gene_id=ENSG00000162511
 
-n_epoch=200
-# gene_id=ENSG00000108405
-gene_id=ENSG00000127507  # 0.3030698889614631
-gene_id=ENSG00000090382
-cohort=bios
+# Control the outputs
+time_stamp=$(date +%Y%m%d-%H%M%S)
+output_dir=$optdir/aseModels/$cohort_id/$gene_id
+model_path=$output_dir/$time_stamp"_pytorch_model_state.pth"
+train_log_path=$output_dir/$time_stamp"_tensorboard_log"
+loss_curve_path=$output_dir/$time_stamp"_training_losscurve.pdf"
+sbatch_log_path=$output_dir/$time_stamp"_%j_%u_asedlp_train.log"
+sbatch_job_name=${cohort_id}_${gene_id}_asedlp_train
 
-output_dir=$optdir/aseModels/$cohort/$gene_id
-model_path=$output_dir/$time_stamp"_pytorch-model.pth"
-logging_path=$output_dir/$time_stamp"_tensorboard-log"
-sbatch_log_path=$output_dir/$time_stamp"-%j-%u-asedlp-train.log"
-sbatch_job_name=${gene_id}_asedlp-train
-
-case $cohort in
-    bios_geuvadis)
-        file_pat=$projdir'/outputs/aseQuan_v2/*/optDir/*/aseqOptDir/*-dup-*.fa'
-        ;;
-    bios)
-        bios_cohorts='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,RS,gonl}'
-        file_pat=$projdir'/outputs/aseQuan_v2/'$bios_cohorts'/optDir/*/aseqOptDir/*-dup-*.fa'
-        ;;
-    geuvadis)
-        file_pat=$projdir'/outputs/aseQuan_v2/Geuvadis/optDir/*/aseqOptDir/*-dup-*.fa'
-        ;;
-    gtex)
-        file_pat=$projdir'/outputs/aseQuan_v2/GTEx/optDir/*/aseqOptDir/*-dup-*.fa'
-        ;;
-    *)
-        echo Unknown cohort
-        exit -1
-        ;;
-esac
+echo_help() {
+    echo -e "Usage: $0 [-d/--debug] [-D/--dry-run] [-s/--sbatch]"
+    echo -e "  -d, --debug     Using BASH to run the script to debug the script."
+    echo -e "  -s, --sbatch    Submit the script to SLURM."
+    echo -e "  -D, --dry-run   Print the script to be excuted."
+    echo -e "  -h, --help      Print this message and exit."
+}
 
 if [[ ! -d $output_dir ]]; then
     mkdir -p $output_dir
 fi
 
+flags=""
+case ${1:--D} in
+    -d|--debug)
+        execmd=bash
+        ;;
+    -D|--dry-run)
+        execmd=cat
+        ;;
+    -s|--sbatch)
+        execmd="sbatch
+        --mem=40G
+        --time=1:59:0
+        --partition=gpu
+        --gres=gpu:v100:1
+        --cpus-per-task=12
+        --output=$sbatch_log_path
+        --job-name=$sbatch_job_name"
+        ;;
+    -h|--help)
+        echo_help
+        exit
+        ;;
+    *)
+        echo_help
 
-sbatch \
-    --mem=5G \
-    --gres=gpu:v100:1 \
-    --time=1:29:0 \
-    --partition=gpu \
-    --output=$sbatch_log_path \
-    --job-name=$sbatch_job_name <<EOF
+        echo -e "\n[E]: Unknown option $1. Exit..."
+        exit
+esac
+
+
+# Determine inputs according to cohort
+case $cohort_id in
+    BIOS_Geuvadis)
+        file_pat=$projdir'/outputs/aseQuan_v2/*/optDir/*/aseqOptDir/*-dup-*.fa'
+        ;;
+    BIOS)
+        bios_cohorts='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,RS,gonl}'
+        file_pat=$projdir'/outputs/aseQuan_v2/'$bios_cohorts'/optDir/*/aseqOptDir/*-dup-*.fa'
+        ;;
+    DEBUG)
+        file_pat=$projdir'/outputs/aseQuan_v2/{CODAM}/optDir/*/aseqOptDir/*-dup-*.fa'
+        ;;
+    Geuvadis)
+        file_pat=$projdir'/outputs/aseQuan_v2/Geuvadis/optDir/*/aseqOptDir/*-dup-*.fa'
+        ;;
+    GTEx)
+        file_pat=$projdir'/outputs/aseQuan_v2/GTEx/optDir/*/aseqOptDir/*-nondup-'$tissue'-*.fa'
+        ;;
+    *)
+        echo Unknown cohort_id
+        exit -1
+        ;;
+esac
+
+
+$execmd <<EOF
 #!/bin/bash
 set -eu -o pipefail
 
 # Check host name
 case \$(hostname) in
-    umcg-node* | calculon | gear | gs-vcompute*)
+    umcg-node* | calculon* | gearshift* | gs-vcompute*)
         source /apps/modules/modules.bashrc
         module purge
         module load Python/3.6.3-foss-2015b
@@ -71,7 +111,7 @@ case \$(hostname) in
         module load Python/3.7.4-GCCcore-8.3.0
         module list
         ;;
-    genetics)
+    genetics*)
         echo "On local machine genetics."
         ;;
     *)
@@ -85,7 +125,9 @@ python $projdir/scripts/asedlp train \
     --gene-id ${gene_id} \
     --n-epoch ${n_epoch} \
     --model-state-path ${model_path} \
-    --logging-path ${logging_path} \
+    --loss-curve-path ${loss_curve_path} \
+    --logging-path ${train_log_path} \
+    --pp-train 0.7 \
+    --batch-size 64 \
     --log-per-n-epoch 1
-
 EOF
