@@ -263,7 +263,7 @@ class Quantifier:
 
     # Get sequence in the genomic interval. 1-based
     def _pr_get_sequence(self, chrom, start, end):
-        return self.sequence_pool.get_seq(chrom, start, end)
+        return self.sequence_pool.get_seq(chrom, start, end).seq
 
     # Get the read counts in the genomic interval
     def _pr_get_readcounts(self, chrom, start, end) -> pandas.DataFrame:
@@ -286,7 +286,7 @@ class Quantifier:
         sequence = self._pr_get_sequence(chrom, start, end)
         variants = self._pr_get_variants(chrom, start, end)
 
-        amb_sequence = sequence.seq
+        amb_sequence = sequence
         for vcf_record in variants:
             sample_genotype = vcf_record.genotype(self._sample_id)
 
@@ -295,7 +295,7 @@ class Quantifier:
                 amb_base = self._pr_encode_bnt(genotype_bases)
 
                 insert_pos = vcf_record.start - start
-                amb_sequence = sequence[:insert_pos].seq + amb_base + sequence[insert_pos+1:].seq
+                amb_sequence = amb_sequence[:insert_pos] + amb_base + amb_sequence[insert_pos+1:]
 
         return amb_sequence
 
@@ -428,7 +428,7 @@ class Quantifier:
 
         return self
 
-    def save_train_set(self, opt_file=None, save_fmt="fa.gz"):
+    def save_train_set(self, opt_file=None):
         """Save seqeunce and ASE effects into disk.
 
         Args:
@@ -445,7 +445,7 @@ class Quantifier:
             if self.args.as_train_set:
                 opt_file = self.args.as_train_set
             else:
-                opt_file = self._sample_id + ".ntsq_and_ase." + save_fmt
+                opt_file = self._sample_id + ".ntsq_and_ase.fa.gz"
 
         _opt_str = ""
         _sample_id = self._sample_id
@@ -455,13 +455,13 @@ class Quantifier:
             _opt_str += ">{}|{}|{}\n{}\n".format(_sample_id, _gene_id, _ase_effect,
                                                  "\n".join(textwrap.wrap(_ntseq)))
 
-        if save_fmt == "fa":
+        if opt_file.endswith(".fa"):
             _open = open
-        elif save_fmt == "fa.gz":
+        elif opt_file.endswith(".fa.gz"):
             _open = gzip.open
             _opt_str = _opt_str.encode()
         else:
-            raise TypeError("Unknown type of output format: {}".format(save_fmt))
+            raise TypeError("Unknown type of output format")
 
         with _open(opt_file, "w") as _opfh:
             _opfh.write(_opt_str)
