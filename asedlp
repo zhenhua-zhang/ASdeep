@@ -100,6 +100,8 @@ def get_args():
                               help='The random seed for torch. Default: %(default)s')
     train_parser.add_argument('-b', '--batch-size', default=64, type=int, dest='batch_size', metavar='INTEGER',
                               help='Batch size. Default: %(default)s')
+    train_parser.add_argument('-a', '--prebuilt-arch', default='alex', dest='prebuilt_arch', choices=['alex', 'resnext'], metavar='STRING',
+                              help='The prebuilt architecture to be used. Default: %(default)s')
     train_parser.add_argument('--pp-train', default=.9, type=float, dest='pp_train', metavar='FLOAT',
                               help='The propotion of dataset will be used as training set. Default: %(default)s')
     train_parser.add_argument('--hbcurve-size', default=64, type=int, dest='hbcurve_size', metavar='INTEGER',
@@ -191,6 +193,7 @@ def train(args):
     random_state = args.random_state
     logging_path = args.logging_path
     learning_rate = args.learning_rate
+    prebuilt_arch = args.prebuilt_arch
     log_per_n_epoch = args.log_per_n_epoch
     loss_curve_path = args.loss_curve_path
     model_state_path = args.model_state_path
@@ -200,15 +203,18 @@ def train(args):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-    # # By default, using the pre-built ResNext.
-    # net = models.resnext50_32x4d(predtrained=False)
-    # net.conv1 = nn.Conv2d(1, hbcurve_size, 7, 2, 3, bias=False)
-    # net.fc = nn.Linear(2048, 3, bias=True)
-
-    # Now I moved to AlexNet
-    net = models.alexnet(pretrained=False)
-    net.features[0] = nn.Conv2d(1, 64, 11, 4, 2)
-    net.classifier[6] = nn.Linear(4096, 3, bias=True)
+    if prebuilt_arch == 'resnext':
+        # By default, using the pre-built ResNext.
+        net = models.resnext50_32x4d(predtrained=False)
+        net.conv1 = nn.Conv2d(1, hbcurve_size, 7, 2, 3, bias=False)
+        net.fc = nn.Linear(2048, 3, bias=True)
+    else:
+        if prebuilt_arch == 'alex':
+            logging.warning("Unsupported prebuilt architecture, using default AlexNet!")
+        # Now I moved to AlexNet
+        net = models.alexnet(pretrained=False)
+        net.features[0] = nn.Conv2d(1, 64, 11, 4, 2)
+        net.classifier[6] = nn.Linear(4096, 3, bias=True)
 
     (Trainer(net, gene_id_pool, file_path_pool, logging_path, log_per_n_epoch, n_cpus)
      .init()

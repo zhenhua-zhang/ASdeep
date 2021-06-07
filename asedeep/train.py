@@ -234,6 +234,7 @@ class Trainer:
 
     def load_dataset(self, **kwargs):
         '''Load the dataset for train or test.'''
+        logging.info("Start to load ASEDataset...")
         gene_id = kwargs.get('gene_id', self.gene_id)
         file_path_pool = kwargs.get('file_path_pool', self.file_path_pool)
         element_trans = kwargs.get('element_trans', SeqToHilbertAndMakeLabel())
