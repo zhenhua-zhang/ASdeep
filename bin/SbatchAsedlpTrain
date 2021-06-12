@@ -11,11 +11,13 @@ iptdir=$projdir/inputs
 optdir=$projdir/outputs
 
 # Parameters. tissue variable only works when cohort_id is gtex
-cohort_id=BIOS
+cohort_id=GTEx
 tissue=WHLBLD
-n_epoch=100
-# ENSG00000108405 ENSG00000127507 ENSG00000090382
+n_epoch=150
+architecture=resnet
+# ENSG00000127507 ENSG00000090382
 gene_id=ENSG00000026297
+gene_id=ENSG00000108405 
 gene_id=ENSG00000162511
 
 # Control the outputs
@@ -51,7 +53,7 @@ case ${1:--D} in
         execmd="sbatch
         --mem=40G
         --time=1:59:0
-        --partition=gpu
+        --partition=gpushort
         --gres=gpu:v100:1
         --cpus-per-task=12
         --output=$sbatch_log_path
@@ -76,16 +78,16 @@ case $cohort_id in
         ;;
     BIOS)
         bios_cohorts='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,RS,gonl}'
-        file_pat=$projdir'/outputs/aseQuan_v2/'$bios_cohorts'/optDir/*/aseqOptDir/*-dup-*.fa'
+        file_pat=$projdir'/outputs/aseQuan_v2/'$bios_cohorts'/optDir/*/aseqOptDir/*-dup-*.fa.gz'
         ;;
     DEBUG)
-        file_pat=$projdir'/outputs/aseQuan_v2/{CODAM}/optDir/*/aseqOptDir/*-dup-*.fa'
+        file_pat=$projdir'/outputs/aseQuan_v2/{CODAM}/optDir/*/aseqOptDir/*-dup-*.fa.gz'
         ;;
     Geuvadis)
-        file_pat=$projdir'/outputs/aseQuan_v2/Geuvadis/optDir/*/aseqOptDir/*-dup-*.fa'
+        file_pat=$projdir'/outputs/aseQuan_v2/Geuvadis/optDir/*/aseqOptDir/*-dup-*.fa.gz'
         ;;
     GTEx)
-        file_pat=$projdir'/outputs/aseQuan_v2/GTEx/optDir/*/aseqOptDir/*-nondup-'$tissue'-*.fa'
+        file_pat=$projdir'/outputs/aseQuan_v2/GTEx/optDir/*/aseqOptDir/*-nondup-'$tissue'-*.fa.gz'
         ;;
     *)
         echo Unknown cohort_id
@@ -120,14 +122,15 @@ case \$(hostname) in
 esac
 
 source $projdir/scripts/.env/bin/activate
-python $projdir/scripts/asedlp train \
+asedeep train \
     --file-path ${file_pat} \
     --gene-id ${gene_id} \
     --n-epoch ${n_epoch} \
+    --prebuilt-arch ${architecture} \
     --model-state-path ${model_path} \
     --loss-curve-path ${loss_curve_path} \
     --logging-path ${train_log_path} \
-    --pp-train 0.7 \
-    --batch-size 64 \
+    --pp-train 0.9 \
+    --batch-size 32 \
     --log-per-n-epoch 1
 EOF

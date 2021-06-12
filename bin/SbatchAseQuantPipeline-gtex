@@ -217,7 +217,7 @@ mkdir -p $logDir \
 #
 mem=4G
 cpus=1
-time=9:59:00
+time=23:59:00
 stepName=AseqASEEstimation
 dependency=$afterok:$GatkASEReadCounterJobId
 if [[ $dependency == "--dependency=afterok:" ]]; then dependency=""; fi
@@ -244,7 +244,7 @@ python $projDir/scripts/asedlp quantify \
     -s $genomeFastaFile \
     -f $genomeAnnotationFile \
     -r $gatkOptDir/$fastqId.v8.wasp_corrected.ase_table.$tissue.csv \
-    -T $aseqOptDir/$fastqId-nondup-$tissue-train-set_500k.fa \
+    -T $aseqOptDir/$fastqId-nondup-$tissue-train-set_500k.fa.gz \
     -R $aseqOptDir/$fastqId-nondup-$tissue-train-report_subset.txt
 EOF
 )

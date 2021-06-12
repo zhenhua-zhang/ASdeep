@@ -81,7 +81,7 @@ case \$(hostname) in
 esac
 
 source $projdir/scripts/.env/bin/activate
-python $projdir/scripts/asedlp report \
+asedeep report \
     -p $file_pat \
     -f $iptdir/Ensembl_references/Homo_sapiens.GRCh37.75.db \
     -e $iptdir/Ensembl_references/MHClocus-geneid.txt \

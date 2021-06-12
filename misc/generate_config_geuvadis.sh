@@ -3,7 +3,7 @@
 
 projDir=~/Documents/projects/wp_ase_dlp
 idmapfile=$projDir/inputs/geuvadis/samples/igsr_geuvadis-genotype-rnaseq-ids_20210308.txt
-configDir=$projDir/scripts/configs/geuvadis
+configDir=$projDir/scripts/configs/Geuvadis
 
 baseUrl=ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR188
 

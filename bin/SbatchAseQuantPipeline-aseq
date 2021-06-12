@@ -260,7 +260,7 @@ set -Ee -o pipefail
 module load $PythonVer
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
 
-python $projDir/scripts/asedlp quantify \
+echo python $projDir/scripts/asedlp quantify \
     -v $vcfFile \
     -i $sampleId \
     -G $geneIdFile \

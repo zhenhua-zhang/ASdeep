@@ -80,7 +80,9 @@ SAMtoolsVer=SAMtools/1.9-foss-2018b
 
 # vim: set nowrap ft=sh ts=4 tw=120:
 EOF
-# For BIOS samples you have to rsync files from the old machine (calculon.hpc.rug.nl) to the new one (gearshift.hpc.rug.nl)
+    # For BIOS samples you have to rsync files from the old machine (calculon.hpc.rug.nl) to the
+    # new one (gearshift.hpc.rug.nl)
     # echo "echo -ne \$LINENO: && rsync -avzh umcg-zzhang@172.23.34.247:$fqdir/${fastqId}_* $pjdir/outputs/aseQuan_v2/$cohortId/tmpDir/ && $pjdir/scripts/bin/SbatchAseQuantPipeline -c $conffile" >> $metarunfile
-    echo "echo -ne \$LINENO: && $pjdir/scripts/bin/SbatchAseQuantPipeline-aseq -c $conffile" >> $metarunfile
+    echo "echo -ne \$LINENO: && $pjdir/scripts/bin/SbatchAseQuantPipeline-aseq -c $conffile" \
+        >> $metarunfile
 done < ${idmapfile}

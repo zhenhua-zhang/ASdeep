@@ -2,6 +2,7 @@
 # A simple script to generate config file for SbatchAseQuantPipeline
 
 tissue=WHLBLD
+tissue=MSCLSK
 pjdir=~/Documents/projects/wp_ase_dlp
 idmapfile=${idmapfile:-$pjdir/inputs/GTEx/misc/idmapfile-$tissue.tsv}
 geneIdFile=$pjdir/outputs/aseReports/GTEx/$tissue/asedlp_report_exMHC_candidate_genes.txt

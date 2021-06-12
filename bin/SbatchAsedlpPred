@@ -65,5 +65,4 @@ ${spdir}/asedlp/asedlp predict \
     --save-path \
     --model-state-path \
     --show-attributions
-
 EOF
