@@ -153,7 +153,7 @@ class Trainer:
             running_loss = 0.0
             true_label_list, pred_label_list, pred_score_list = [], [], None
 
-            for n_batch, data in enumerate(trainloader):
+            for _, data in enumerate(trainloader):
                 inputs_type = torch.FloatTensor if device == 'cpu' else torch.cuda.FloatTensor
 
                 # Get inputs and true label ready
@@ -182,8 +182,6 @@ class Trainer:
                     pred_score_list = torch.cat((pred_score_list, outputs.data.to('cpu')))
 
                 running_loss += train_loss.item()
-
-            running_loss /= n_batch
 
             if inputs is not None and epoch == 0:
                 self.writer.add_graph(self.net, inputs)

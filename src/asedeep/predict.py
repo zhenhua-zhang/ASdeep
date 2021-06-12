@@ -1,35 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-'''Predict or validate the given input.
-'''
+"""Predict or validate the given input.
+"""
 
 import logging
-
 from typing import Union, List, Tuple, Iterable
 
 import numpy as np
-
 import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
 from torch.nn import functional as func
 from torch.autograd import Variable
-
 from torchvision import models
-
 from captum.attr import IntegratedGradients
-from captum.attr import GradientShap
-from captum.attr import Deconvolution
-from captum.attr import GuidedGradCam
+# from captum.attr import GradientShap
+# from captum.attr import Deconvolution
+# from captum.attr import GuidedGradCam
 
 from .dataset import ASEDataset
 from .dataset import SeqToHilbertAndMakeLabel
 from .dataset import MultipleTestAdjustment
-
 from .hbcurve import HilbertCurve
-
 from .zutils import fetch_layer_by_path
 
 
@@ -58,20 +52,22 @@ class Predictor(object):
 
     @staticmethod
     def _check_device():
-        return 'cuda:0' if torch.cuda.is_available() else 'cpu'
+        return "cuda:0" if torch.cuda.is_available() else "cpu"
 
-    def _check_matrix_idx(self, matrix_idx):
+    def _check_matrix_idx(self,
+                          matrix_idx):
         if matrix_idx is None:
             return range(len(self._dataset))
         elif isinstance(matrix_idx, int):
             return [matrix_idx]
         elif isinstance(matrix_idx, (list, tuple)) \
-                or hasattr(matrix_idx, '__next__'):
+                or hasattr(matrix_idx, "__next__"):
             return matrix_idx
         else:
-            raise TypeError('Unsupported matrix_idx: ' + type(matrix_idx))
+            raise TypeError("Unsupported matrix_idx: " + type(matrix_idx))
 
-    def _load_mtx(self, matrix_idx: Union[int, List[int], Tuple[int], Iterable[int]]):
+    def _load_mtx(self,
+                  matrix_idx: Union[int, List[int], Tuple[int], Iterable[int]]):
         self._hbcurve, (_, self._true_label) = self._dataset[matrix_idx]
         self._matrix = self._hbcurve.get_hcurve()
         self._sequence = self._hbcurve.get_kmerseq()
@@ -84,13 +80,13 @@ class Predictor(object):
         self._pred_prob, self._pred_label = probs.numpy()[0], idx.numpy()[0]
 
     def _attrseq_to_nucseq(self):
-        '''Convert attribution sequence into nucleotide sequence.'''
+        """Convert attribution sequence into nucleotide sequence."""
         self._dataset
 
     def _calc_attrmtx(self,
-                      gdc_layer_path: str='.layer3[-1].conv3'):
-        '''Calculate attributions.
-        '''
+                      gdc_layer_path: str=".layer3[-1].conv3"):
+        """Calculate attributions.
+        """
         matrix = Variable(torch.Tensor(np.expand_dims(self._matrix, 0)))
         pred_label = int(self._pred_label)
         # IntegratedGradients
@@ -113,20 +109,29 @@ class Predictor(object):
         # gradcam_layer = fetch_layer_by_path(self.net, gdc_layer_path)
         # attr_gd = GuidedGradCam(self.net, gradcam_layer).attribute(matrix, target=pred_label)
 
-        attr_method = ['Integrated gradients'] # ['Gradient SHAP', 'Deconvolution', 'Guided gradient CAM']
+        attr_method = ["Integrated gradients"] # ["Gradient SHAP", "Deconvolution", "Guided gradient CAM"]
         attrs = [attr_ig] # [attr_gs, attr_dc, attr_gd]
 
-        self._attrmtx = np.zeros(self._matrix.shape[-2:], dtype=[(k, '>f8') for k in attr_method])
+        self._attrmtx = np.zeros(self._matrix.shape[-2:], dtype=[(k, ">f8") for k in attr_method])
         for mthd, attr in zip(attr_method, attrs):
             self._attrmtx[mthd] = attr.squeeze().cpu().detach().numpy()
 
     def _plot_attrmtx(self,
-                      orig_color='Greys',
-                      attr_color='Reds',
+                      orig_color="Greys",
+                      attr_color="Reds",
                       figtitle="Hilbert Curve",
                       figsize=(8, 8)):
-        '''Draw heatmaps to show the attribution of a few approaches.
-        '''
+        """Draw heatmaps to show the attribution of a few approaches.
+
+        Args:
+            orig_color:
+            attr_color:
+            figtitle:
+            figsize:
+
+        Returns:
+            A tuple of (Figure, Axes), aka a Figure instance and an Axes instance.
+        """
         fig, axes = plt.subplots(2, len(self._attrmtx.dtype) + 1, figsize=figsize)
 
         axes[0][0].annotate("Attribution per DNA kmer.", (.5, .5), ha="center",
@@ -154,9 +159,11 @@ class Predictor(object):
     def _attrmtx_to_attrseq(self,
                             scale_hbcv: bool =True,
                             biallelic: bool =True):
-        '''Converts attributions of the Hilbert curve matrix into a sequence.
+        """Converts attributions of the Hilbert curve matrix into a sequence.
         
         Args:
+            scale_hbcv:
+            biallelic:
 
         Returns:
             A named numpy.narray of attributions from given attribution matrix. The
@@ -165,7 +172,7 @@ class Predictor(object):
 
         Raises:
             None
-        '''
+        """
         if scale_hbcv: self._matrix *= 1.0 / self._matrix.max()
         
         n_elements = np.prod(self._matrix.shape)  # Number of elements in the matrix
@@ -193,28 +200,29 @@ class Predictor(object):
             self._attrseq = _attrseq
             
     def _plot_attrseq(self,
-                      colors: tuple =('r', 'b'),
+                      colors: tuple =("r", "b"),
                       figsize: tuple =(16, 8)):
-        '''Draw a line plot to show the attribution of the n-mer along the sequence.
+        """Draw a line plot to show the attribution of the n-mer along the sequence.
+
         Args:
-          attrs:
-            A numpy.ndarray of attributions with type of attribution as name and 
-            attributions sequence as value. The attribution sequences should be
-            splited into two alleles.
-          colors:
-            A tuple of colors including two matplotlib.color, one for allele A
-            the other for allele B
-          figsize:
-            A tuple of floats to set the figure size.
+            attrs:
+                A numpy.ndarray of attributions with type of attribution as name and 
+                attributions sequence as value. The attribution sequences should be
+                splited into two alleles.
+            colors:
+                A tuple of colors including two matplotlib.color, one for allele A
+                the other for allele B
+            figsize:
+                A tuple of floats to set the figure size.
 
         Returns:
-          A tuple including matplotlib.pyplot.Figure and matplotlib.pyplot.axes.
+            A tuple including matplotlib.pyplot.Figure and matplotlib.pyplot.axes.
 
         Raises:
-          ValueError:
-            A error occur when the sequence of Hilbert curve not splited into
-            sequences of two allele.
-        '''
+            ValueError:
+                A error occur when the sequence of Hilbert curve not splited into
+                sequences of two allele.
+        """
         seqlen, n_allele = self._attrseq.shape
         if n_allele != 2:
             raise ValueError("The sequence should be splited into two allele!")
@@ -238,28 +246,28 @@ class Predictor(object):
                 attr_idx = axes_idx - idx * 2
                 axes[axes_idx].plot(x_coord, self._attrseq[attr_name][:, attr_idx],
                                     color=colors[attr_idx])
-                axes[axes_idx].set_title('{} (allele {})'.format(attr_name, attr_idx))
+                axes[axes_idx].set_title("{} (allele {})".format(attr_name, attr_idx))
 
                 axes[axes_idx].set_xticks([])        
-                axes[axes_idx].spines['top'].set_visible(False)
-                axes[axes_idx].spines['right'].set_visible(False)
-                axes[axes_idx].spines['bottom'].set_visible(False)
+                axes[axes_idx].spines["top"].set_visible(False)
+                axes[axes_idx].spines["right"].set_visible(False)
+                axes[axes_idx].spines["bottom"].set_visible(False)
 
         for axes_idx in [-2, -3]:
             seq_idx = axes_idx + 3
             axes[axes_idx].plot(x_coord, self._sequence[:, seq_idx], color=colors[seq_idx])
-            axes[axes_idx].set_title('Original sequence (allele {})'.format(seq_idx))
+            axes[axes_idx].set_title("Original sequence (allele {})".format(seq_idx))
             axes[axes_idx].set_xticks([])        
-            axes[axes_idx].spines['top'].set_visible(False)
-            axes[axes_idx].spines['right'].set_visible(False)
-            axes[axes_idx].spines['bottom'].set_visible(False)
+            axes[axes_idx].spines["top"].set_visible(False)
+            axes[axes_idx].spines["right"].set_visible(False)
+            axes[axes_idx].spines["bottom"].set_visible(False)
 
         if heter_sites is not None and heter_sites.size > 0:
-            axes[-1].vlines(heter_sites, 0, 1, color='k')
+            axes[-1].vlines(heter_sites, 0, 1, color="k")
         axes[-1].set_xticks([0, max(x_coord)])
         axes[-1].set_title("Heterogeneous sites")
-        axes[-1].spines['top'].set_visible(False)
-        axes[-1].spines['right'].set_visible(False)
+        axes[-1].spines["top"].set_visible(False)
+        axes[-1].spines["right"].set_visible(False)
 
         fig.set_tight_layout(True)
         fig.align_ylabels()
@@ -268,15 +276,26 @@ class Predictor(object):
 
     def init(self,
              model_state,
-             input_size=64):
-        '''Initialize to have basic settings ready.'''
+             output_size=64):
+        """Initialize to have basic settings ready.
+
+        Args:
+            model_state:
+            output_size:
+
+        Returns:
+            The Predictor it self.
+
+        Raises:
+            None
+        """
         device = self._check_device()
 
         if self.net is None: # Load model
             self.net = models.resnext50_32x4d()
 
             # in_channels 1, out_channels 64, kernel_size 7, stride 2, padding 3
-            self.net.conv1 = nn.Conv2d(1, input_size, 7, 2, 3, bias=False)
+            self.net.conv1 = nn.Conv2d(1, output_size, 7, 2, 3, bias=False)
             self.net.fc = nn.Linear(2048, 3)
 
         self.net.load_state_dict(torch.load(model_state, map_location=device))
@@ -289,7 +308,17 @@ class Predictor(object):
                      file_path_pool=None,
                      element_trans=None,
                      dataset_trans=None):
-        '''Load dataset.'''
+        """Load dataset.
+
+        Args:
+            gene_id:
+            file_path_pool:
+            element_trans:
+            dataset_trans:
+
+        Returns:
+            The instance of Predictor itself.
+        """
         if gene_id is None:
             gene_id = self.gene_id
 
@@ -311,32 +340,41 @@ class Predictor(object):
                 save_pref,
                 matrix_idx=None,
                 show_attr=False):
-        '''Predict the given input.'''
-        matrix_idx = self._check_matrix_idx(matrix_idx)
-        label = {0: 'ASEtoA', 1: 'NonASE', 2: 'ASEtoB', None: 'Unknown'}
+        """Predict the given input.
 
-        logging.info('TrueLabel | PredLabel | PredProb')
+        Args:
+            save_pref:
+            matrix_idx:
+            show_attr:
+
+        Returns:
+            The instance of Predictor itself.
+        """
+        matrix_idx = self._check_matrix_idx(matrix_idx)
+        label = {0: "ASEtoA", 1: "NonASE", 2: "ASEtoB", None: "Unknown"}
+
+        logging.info("TrueLabel | PredLabel | PredProb")
         for idx in matrix_idx:
             self._load_mtx(idx)
             self._predict()
             true_label, pred_label = label[self._true_label], label[self._pred_label]
-            logging.info('{: ^9} | {: ^9} | {: ^9.3}'.format(true_label, pred_label,
+            logging.info("{: ^9} | {: ^9} | {: ^9.3}".format(true_label, pred_label,
                                                              self._pred_prob))
 
             if show_attr:
-                splitter = '' if save_pref.endswith('/') else '.'
-                _save_name = '{}{}{}_{}_{}.pdf'.format(save_pref, splitter, idx, true_label,
+                splitter = "" if save_pref.endswith("/") else "."
+                _save_name = "{}{}{}_{}_{}.pdf".format(save_pref, splitter, idx, true_label,
                                                        pred_label)
                 self._calc_attrmtx()
                 fig, _ = self._plot_attrmtx()
-                fig.savefig(_save_name.replace('.pdf', '_attrmtx.pdf'))
+                fig.savefig(_save_name.replace(".pdf", "_attrmtx.pdf"))
 
                 self._attrmtx_to_attrseq()
                 fig, _ = self._plot_attrseq()
-                fig.savefig(_save_name.replace('.pdf', '_attrseq.pdf'))
+                fig.savefig(_save_name.replace(".pdf", "_attrseq.pdf"))
 
         return self
 
 
-if __name__ == '__main__':
-    logging.warning('This module should not be executed directly.')
+if __name__ == "__main__":
+    logging.warning("This module should not be executed directly.")

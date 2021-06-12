@@ -7,7 +7,7 @@
 # Created  : Mon 22 Jun 2020 11:16:49 AM CEST
 # License  : MIT
 #
-'''A module to load and pre-process sequence matrix.'''
+"""A module to load and pre-process sequence matrix."""
 
 import math
 import logging
@@ -21,12 +21,11 @@ from .zutils import fdr_bh
 
 
 class MultipleTestAdjustment:
-    '''Adjust p-values for multiple tests.
+    """Adjust p-values for multiple tests.
 
     This class is a dataset-wide transformer.
-    '''
-
-    def __init__(self, alpha: float = 0.05, method: str = 'fdr_bh'):
+    """
+    def __init__(self, alpha: float = 0.05, method: str = "fdr_bh"):
         self.alpha = alpha
         self.method = method
 
@@ -41,6 +40,8 @@ class MultipleTestAdjustment:
                 pval_pool.append(p_val)
                 mtrx_pool.append(matrix)
                 label_pool.append(label)
+            else:
+                logging.warning("The length of input dataset should be in length 1.")
 
         pval_pool = fdr_bh(pval_pool)
 
@@ -48,7 +49,7 @@ class MultipleTestAdjustment:
 
 
 class ReshapeMatrixAndPickupLabel:
-    '''Reshape the sequence matrix into a given size.
+    """Reshape the sequence matrix into a given size.
 
     This class is an element-wise transformer.
 
@@ -56,8 +57,7 @@ class ReshapeMatrixAndPickupLabel:
         -1, 0, 1 reprsents ASE effect prone to allele A, no ASE effects, ASE
         Effects prone to allele B in the raw ASE quantification results,
         however, both PyTorch and TensorFlow require labels no less than 0.
-    '''
-
+    """
     def __init__(self, pthd=0.05):
         self.pthd = pthd
 
@@ -74,10 +74,10 @@ class ReshapeMatrixAndPickupLabel:
 
 
 class SeqToHilbertAndMakeLabel:
-    '''Convert sequence into matrix of Hilbert curve and fit label to training.
+    """Convert sequence into matrix of Hilbert curve and fit label to training.
 
     This class is a dataset-wide transformer.
-    '''
+    """
     def __init__(self, pthd=0.05, show_pic=False, onehot=False, matrix=True):
         self.pthd = pthd
         self.show_pic = show_pic
@@ -110,7 +110,7 @@ class SeqToHilbertAndMakeLabel:
 
 
 class ASEDataset(Dataset):
-    '''ASE dataset.
+    """ASE dataset.
 
     Attributes:
         gene_id (string): Gene ID (Ensembl gene ID) to train on.
@@ -124,9 +124,14 @@ class ASEDataset(Dataset):
         adjustment as the sample was loaded at __getitem__(). Thus, in current
         implementation, the data will be loaded into memory and then further
         operation will be done.
-    '''
-    def __init__(self, gene_id, file_path_pool, element_trans=None, dataset_trans=None,
-                 use_bb_pval=False, num_workers=1):
+    """
+    def __init__(self,
+                 gene_id,
+                 file_path_pool,
+                 element_trans=None,
+                 dataset_trans=None,
+                 use_bb_pval=False,
+                 num_workers=1):
         self.gene_id = gene_id
 
         if isinstance(gene_id, str):
@@ -152,24 +157,27 @@ class ASEDataset(Dataset):
 
     def _load_data_base(self, file_path):
         seq_pool = pyfaidx.Fasta(file_path)
-        chosen_records = [seq_pool[idx] for idx in seq_pool.keys()
-                          if any([_gene_id in idx for _gene_id in self.gene_id])]
+        chosen_records = [
+            seq_pool[idx] for idx in seq_pool.keys()
+            if any([_gene_id in idx for _gene_id in self.gene_id])
+        ]
 
         tmp_pool = []
         for record in chosen_records:
             if record is None or len(record) == 0:
-                _err_msg = 'No \'{}\' in \'{}\''.format(self.gene_id, file_path)
+                _err_msg = "No \"{}\" in \"{}\"".format(
+                    self.gene_id, file_path)
                 logging.warning(_err_msg)
                 record = (None, (None, None))
             else:
-                record_name_list = record.name.split('|')
+                record_name_list = record.name.split("|")
                 if len(record_name_list) > 2:
                     p_val_bn, p_val_bb, label = record_name_list[2:5]
                     p_val = p_val_bb if self.use_bb_pval else p_val_bn
                     p_val, label = float(p_val), int(label)
                 else:
                     p_val, label = None, None
-                record = (str(record[0:].seq), (p_val, label))
+                record = (str(record[:].seq), (p_val, label))
 
             if self.element_trans:
                 record = self.element_trans(record)
@@ -179,8 +187,8 @@ class ASEDataset(Dataset):
         return tmp_pool
 
     def _load_data(self):
-        with Pool(self.num_workers) as pp:
-            self.dataset_pool = pp.map(self._load_data_base, self.file_path_pool)
+        with Pool(self.num_workers) as proc_pool:
+            self.dataset_pool = proc_pool.map(self._load_data_base, self.file_path_pool)
 
         if self.dataset_trans:
             self.dataset_pool = self.dataset_trans(self.dataset_pool)
@@ -195,11 +203,11 @@ class ASEDataset(Dataset):
             yield self[idx][pos][1]
 
     def get_labels(self, idx=None):
-        '''Get labels.'''
+        """Get labels."""
         return self._items(idx)
 
     def get_matrix(self, idx=None):
-        '''Get matrix.'''
+        """Get matrix."""
         return self._items(idx, False)
 
 
