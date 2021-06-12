@@ -1,0 +1,12 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##filedate=20201209
+##source="beagle.18May20.d20.jar"
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##contig=<ID=22>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	individual_1
+22	41	rs001	G	A	.	PASS	.	GT	0|0
+22	56	rs002	C	T	.	PASS	.	GT	1|0
+22	257	rs003	A	T	.	PASS	.	GT	0|1
+22	277	rs004	A	G	.	PASS	.	GT	0|1
+22	31897	rs005	A	G	.	PASS	.	GT	0|1
