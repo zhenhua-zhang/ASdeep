@@ -325,12 +325,13 @@ class Trainer:
             logging.error("The model is empty, have you ever run the train() method?")
             sys.exit()
 
-        if how == "state":
-            torch.save(self.net.state_dict(), path)
-        elif how == "model":
+        if how == "model":
             torch.save(self.net, path)
         else:
-            raise ValueError("Unsupported way to save the model: choose one from [state, model]")
+            if how != "state":
+                logging.warning("Unsupported way to save the model: choose one from [state, model]")
+
+            torch.save(self.net.state_dict(), path)
 
         return self
 
