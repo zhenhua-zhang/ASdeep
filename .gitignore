@@ -161,4 +161,5 @@ cython_debug/
 # Files and dirs not related to the project
 _archived/
 configs/
+temp
 README.pdf

@@ -240,7 +240,7 @@ fi
 ## aseq estimates ASE effects {
 #
 mem=8G
-cpus=2
+cpus=1
 time=4:59:00
 stepName=AseqASEEstimation
 dependency=$afterok:$GatkASEReadCounterJobId
@@ -260,7 +260,7 @@ set -Ee -o pipefail
 module load $PythonVer
 if [ $pyEnv"xxx" != "xxx" ]; then source $pyEnv/bin/activate; fi
 
-echo python $projDir/scripts/asedlp quantify \
+python $projDir/scripts/asedlp quantify \
     -v $vcfFile \
     -i $sampleId \
     -G $geneIdFile \
@@ -270,7 +270,7 @@ echo python $projDir/scripts/asedlp quantify \
     -T $aseqOptDir/$fastqId-dup-train-set_500k.fa.gz \
     -R $aseqOptDir/$fastqId-dup-train-report_subset.txt &
 
-python $projDir/scripts/asedlp quantify \
+echo python $projDir/scripts/asedlp quantify \
     -v $vcfFile \
     -i $sampleId \
     -G $geneIdFile \

@@ -21,23 +21,23 @@ reqmem=2G
 case $cohort in
     BIOS)
         bios='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,NTR_Affy6,RS,gonl}'
-        file_pat=$projdir/outputs/aseQuan_v2/$bios/optDir/'*/aseqOptDir/*-dup-*.txt'
+        file_pat=$projdir/outputs/aseQuan_v2/$bios/optDir/'*/aseqOptDir/*-nondup-train-report.txt'
         reqtime=0:29:0
         reqmem=16G
         ;;
     BIOS_Geuvadis)
         bios_geuvadis='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,NTR_Affy6,RS,gonl,Geuvadis}'
-        file_pat=$projdir/outputs/aseQuan_v2/$bios_geuvadis'/optDir/*/aseqOptDir/*-dup-*.txt'
+        file_pat=$projdir/outputs/aseQuan_v2/$bios_geuvadis'/optDir/*/aseqOptDir/*-nondup-train-report.txt'
         reqtime=0:29:0
         reqmem=16G
         ;;
     CODAM|LL|LLS_660Q|LLS_OminExpr|PAN|RS|gonl|Geuvadis)
-        file_pat=$projdir/outputs/aseQuan_v2/$cohort/optDir/'*/aseqOptDir/*-dup-*.txt'
+        file_pat=$projdir/outputs/aseQuan_v2/$cohort/optDir/'*/aseqOptDir/*-nondup-train-report.txt'
         ;;
     GTEx)
         reqtime=0:10:0
         reqmem=8G
-        file_pat=$projdir/outputs/aseQuan_v2/$cohort/optDir/'*/aseqOptDir/*-nondup-'$tissue'-*.txt'
+        file_pat=$projdir/outputs/aseQuan_v2/$cohort/optDir/'*/aseqOptDir/*-nondup-'$tissue'-train-report.txt'
         output_dir=$output_dir/$tissue
         sbatch_log_path=$output_dir/%j-%u-asedlp-report.log
         ;;

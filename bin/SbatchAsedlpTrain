@@ -11,14 +11,17 @@ iptdir=$projdir/inputs
 optdir=$projdir/outputs
 
 # Parameters. tissue variable only works when cohort_id is gtex
-cohort_id=GTEx
+cohort_id=BIOS
 tissue=WHLBLD
 n_epoch=150
-architecture=resnet
-# ENSG00000127507 ENSG00000090382
-gene_id=ENSG00000026297
-gene_id=ENSG00000108405 
-gene_id=ENSG00000162511
+architecture=alexnet
+
+gene_id=ENSG00000134109 # 0.10055501142670584
+gene_id=ENSG00000124357 # 0.20241593209271955
+gene_id=ENSG00000108405 # 0.26803787136793994
+gene_id=ENSG00000162511 # 0.3032974208292524
+gene_id=ENSG00000026297 # 0.4982043747959517
+gene_id=ENSG00000085265 # 0.5762324518445968
 
 # Control the outputs
 time_stamp=$(date +%Y%m%d-%H%M%S)
@@ -55,7 +58,7 @@ case ${1:--D} in
         --time=1:59:0
         --partition=gpushort
         --gres=gpu:v100:1
-        --cpus-per-task=12
+        --cpus-per-task=8
         --output=$sbatch_log_path
         --job-name=$sbatch_job_name"
         ;;
@@ -78,13 +81,13 @@ case $cohort_id in
         ;;
     BIOS)
         bios_cohorts='{CODAM,LL,LLS_660Q,LLS_OminExpr,PAN,RS,gonl}'
-        file_pat=$projdir'/outputs/aseQuan_v2/'$bios_cohorts'/optDir/*/aseqOptDir/*-dup-*.fa.gz'
+        file_pat=$projdir'/outputs/aseQuan_v2/'$bios_cohorts'/optDir/*/aseqOptDir/*-nondup-*.fa.gz'
         ;;
     DEBUG)
-        file_pat=$projdir'/outputs/aseQuan_v2/{CODAM}/optDir/*/aseqOptDir/*-dup-*.fa.gz'
+        file_pat=$projdir'/outputs/aseQuan_v2/{CODAM}/optDir/*/aseqOptDir/*-nondup-*.fa.gz'
         ;;
     Geuvadis)
-        file_pat=$projdir'/outputs/aseQuan_v2/Geuvadis/optDir/*/aseqOptDir/*-dup-*.fa.gz'
+        file_pat=$projdir'/outputs/aseQuan_v2/Geuvadis/optDir/*/aseqOptDir/*-nondup-*.fa.gz'
         ;;
     GTEx)
         file_pat=$projdir'/outputs/aseQuan_v2/GTEx/optDir/*/aseqOptDir/*-nondup-'$tissue'-*.fa.gz'
