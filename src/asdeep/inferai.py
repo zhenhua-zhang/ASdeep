@@ -1,173 +1,23 @@
 """Infer allelic imbalance effects from allelic read counts using Bayesian inference."""
 
+import logging
 import traceback
 from argparse import Namespace
 from collections import OrderedDict
 
 import arviz as az
 import pymc3 as pm
-
-from pysam.libcbcf import VariantFile
-from pysam.libctabix import TabixFile, asGFF3, asGTF, asBed
+from pysam.libctabix import asBed, asTuple
 
 from .zutils import LogManager
+from .tabdict import BEDDict
+from .tabdict import GTFDict
+from .tabdict import VCFDict
 
-
-class TblDict(TabixFile):
-    def __init__(self, *args, **kwargs):
-        self._rec_iters = self.fetch()
-        self._args = args
-        self._parser = kwargs.get("parser", None)
-        self._sample_id = kwargs.get("sample_d", None)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, tb):
-        if exc_type is not None:
-            traceback.print_exception(exc_type, exc_value, tb)
-        self.close()
-
-    def _mk_beddict(self):
-        bed_dict = OrderedDict()
-        for per_rec in self._rec_iters:
-            chrom, _, pos = per_rec.contig, per_rec.start, per_rec.end
-            rsid, ref, alt, refrc, altrc, allrc, *oth = per_rec.name.split(";")
-            key = (chrom, pos, ref, alt)
-            bed_dict[key] = (chrom, pos, rsid, ref, alt, int(refrc),
-                             int(altrc), int(allrc), oth)
-
-        return bed_dict
-
-    def _mk_gtfdict(self):
-        gtf_dict = OrderedDict()
-        for per_rec in self._rec_iters:
-            attrs = per_rec.as_dict()
-            gene_id = attrs.get("gene_id", None)
-            mrna_id = attrs.get("transcript_id", None)
-
-            if mrna_id is None: continue
-
-            rec_tuple = (per_rec.contig,
-                         self._try_to_dot(per_rec.feature),
-                         self._try_to_dot(per_rec.source),
-                         per_rec.start,
-                         per_rec.end,
-                         self._try_to_dot(per_rec.score),
-                         self._try_to_dot(per_rec.strand),
-                         self._try_to_dot(per_rec.frame),
-                         per_rec.to_dict())
-
-            if gene_id in gtf_dict:
-                if mrna_id in gtf_dict[gene_id]:
-                    gtf_dict[gene_id][mrna_id].append(rec_tuple)
-                else:
-                    gtf_dict[gene_id][mrna_id] = [rec_tuple]
-            else:
-                gtf_dict[gene_id] = {mrna_id: [rec_tuple]}
-
-        return gtf_dict
-
-    @staticmethod
-    def _try_to_dot(x):
-        if x is None: return "."
-        else:
-            try:
-                return int(x)
-            except ValueError:
-                try:
-                    return float(x)
-                except ValueError:
-                    return str(x)
-
-    @property
-    def is_bed(self):
-        return isinstance(self._parser, asBed)
-
-    @property
-    def is_gtf(self):
-        return isinstance(self._parser, asGTF)
-
-    @property
-    def is_gff3(self):
-        return isinstance(self._parser, asGFF3)
-
-    @property
-    def tbldict(self):
-        if self.is_bed:
-            return self._mk_beddict()
-        elif self.is_gtf or self.is_gff3:
-            return self._mk_gtfdict()
-        else:
-            return None
-
-    def subset(self, **kwargs):
-        if "parser" in kwargs:
-            self._parser = kwargs["parser"]
-
-        self._rec_iters = self.fetch(**kwargs)
-        return self
-
-
-class VcfDict:
-    def __init__(self, *args, **kwargs):
-        self._sample_id = kwargs.get("sample_id", None)
-        if self._sample_id is not None:
-            kwargs.pop("sample_id")
-
-        self._vcf = VariantFile(*args, **kwargs)
-
-        if self._sample_id:
-            self._vcf.subset_samples([self._sample_id])
-
-        self._rec_iters = self._vcf.fetch()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, tb):
-        if exc_type is not None:
-            traceback.print_exception(exc_type, exc_value, tb)
-
-        if self._vcf.is_open:
-            self._vcf.close()
-
-    def _mk_vcfdict(self):
-        vcf_dict = OrderedDict()
-        sample_id = self._sample_id
-        for per_rec in self._rec_iters:
-            chrom, pos, rsid = per_rec.chrom, per_rec.pos, per_rec.id
-            ref, alts = per_rec.ref, per_rec.alts
-
-            if len(alts) != 1: continue
-            alt = alts[0]
-
-            sample = per_rec.samples.get(sample_id)
-            phased = True if sample.phased else False
-            genotype = sample.get("GT", None)
-
-            key = (chrom, pos, ref, alt)
-            if key in vcf_dict:
-                raise KeyError(f"Duplicated key: {key}")
-
-            vcf_dict[key] = (chrom, pos, rsid, ref, alt, phased, genotype)
-
-        return vcf_dict
-
-    @property
-    def tbldict(self):
-        return self._mk_vcfdict()
-
-    def is_open(self):
-        return self._vcf.is_open
-
-    def close(self):
-        if self._vcf.is_open:
-            self._vcf.close()
-
-    def subset(self, **kwargs):
-        self._rec_iters = self._vcf.fetch(**kwargs)
-        return self
+# Suppress the loging of pymc3
+logger = logging.getLogger("pymc3")
+logger.propagate = False
+logger.setLevel(logging.ERROR)
 
 
 class AllelicCounts:
@@ -183,11 +33,11 @@ class AllelicCounts:
         self._ai_summary: list = []
         self._mrna_id: list = []
 
-        self._vcf_recs = VcfDict(vcf_path, mode="r", sample_id=sample_id,
+        self._vcf_recs = VCFDict(vcf_path, mode="r", sample_id=sample_id,
                                  threads=threads)
-        self._gtf_recs = TblDict(gtf_path, mode="r", parser=asGFF3(),
+        self._gtf_recs = GTFDict(gtf_path, mode="r", parser=asTuple(),
                                  threads=threads)
-        self._bed_recs = TblDict(bed_path, mode="r", parser=asBed(),
+        self._bed_recs = BEDDict(bed_path, mode="r", parser=asBed(),
                                  threads=threads)
 
         self._hdi_prob = hdi_prob
@@ -231,7 +81,7 @@ class AllelicCounts:
 
     def fetch(self, **kwargs):
         gtf_recs = self._gtf_recs.subset(**kwargs)
-        for gene_id, per_gene_rec in gtf_recs.tbldict.items():
+        for gene_id, per_gene_rec in gtf_recs.tabdict.items():
             if gene_id in self._readcounts:
                 raise KeyError(f"Duplicated entry: {gene_id}")
             self._readcounts[gene_id] = OrderedDict()
@@ -243,13 +93,13 @@ class AllelicCounts:
                 self._readcounts[gene_id][mrna_id] = OrderedDict()
                 a12 = []
                 for per_exon_rec in per_mrna_rec:
-                    chrom, feature, _, start, end, *_ = per_exon_rec
+                    chrom, _, feature, start, end, *_ = per_exon_rec
 
                     if feature != self._tar_feature: continue
 
                     region = f"{chrom}:{start}-{end}"
-                    rcpool = self._bed_recs.subset(region=region).tbldict
-                    variants = self._vcf_recs.subset(region=region).tbldict
+                    rcpool = self._bed_recs.subset(region=region).tabdict
+                    variants = self._vcf_recs.subset(region=region).tabdict
 
                     for key, per_var in variants.items():
                         if key not in rcpool: continue
@@ -276,7 +126,7 @@ class AllelicCounts:
 
         return self
 
-    def inferad(self, gene_id: list = None, mrna_id: list = None,
+    def inferai(self, gene_id: list = None, mrna_id: list = None,
                 ab_sigma: float = 10, hdi_prob: float = None, **kwargs):
         """Infer allelic difference using MCMC."""
         if "tune" not in kwargs: kwargs["tune"] = 500
@@ -307,6 +157,8 @@ class AllelicCounts:
             if not a1_rc or not a2_rc:
                 self._logman.warning(f"No enough reads for {per_mrna_id} of "
                                      f"{per_gene_id}")
+                self._ai_summary.append((per_gene_id, per_mrna_id, "", "",
+                                     "", "", ""))
                 continue
 
             n = sum(a1_rc) + sum(a2_rc)
@@ -380,6 +232,6 @@ def inferai(args: Namespace, logman: LogManager = LogManager("InferAI")):
                        hdi_prob=hdi_prob) as allelic_counts:
         (allelic_counts
          .fetch()
-         .inferad(draws=n_draw, chains=n_chain, tune=n_tune, cores=n_cpu)
+         .inferai(draws=n_draw, chains=n_chain, tune=n_tune, cores=n_cpu)
          .save_to_dist(optfile))
 

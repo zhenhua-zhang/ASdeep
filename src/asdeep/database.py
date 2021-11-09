@@ -4,11 +4,8 @@
 # Updated: Oct 06, 2021
 """Database"""
 
-import csv
 import copy
-import traceback
 from argparse import Namespace
-from collections import OrderedDict
 
 import h5py as h5
 import numpy as np
@@ -23,12 +20,14 @@ try:
     from .zutils import calc_bits
     from .zutils import LogManager
     from .zutils import make_all_mers
+    from .tabdict import CSVDict
 except ImportError as e:
     from zutils import B2M
     from zutils import M2B
     from zutils import calc_bits
     from zutils import LogManager
     from zutils import make_all_mers
+    from tabdict import CSVDict
 
 
 class AllelicDiffLenError(Exception):
@@ -103,27 +102,48 @@ class HilbertCurve:
     """Hilbert curve.
 
     NOTE:
-        `mask_homo` only works for string DNA sequence for now (Oct 11, 2021).
+        1. `mask_homo` only works for string DNA sequence (Oct 11, 2021).
+        2. The allelic sequences are connected at the TSS end, which take the
+        strand in consideration.
     """
-    def __init__(self, source=None, kmer=4, mask_homo=False, flank=25, pads=-1,
+    def __init__(self, source=None, kmer: int = 4, strand=1, dtype=np.uint8,
                  logman: LogManager = LogManager("HilbertCurve")):
         self._logman = logman
         self._mer2idx, self._idx2mer = make_all_mers(kmer)
 
-        if isinstance(source, str):
-            self.from_sequence(source, kmer, mask_homo, flank, pads)
-        elif isinstance(source, np.ndarray):
-            self.from_hbcmat(source)
+        self._kmer = kmer
+        self._strand = strand
+        self._dtype = dtype
+
+        # Footprint tracker
+        self._is_hbcmat = False
+        self._is_masked = False
+        self._is_subset = False
+
+        if isinstance(source, str) and len(source) != 0:
+            self._from_dnaseq(source)
+        elif isinstance(source, np.ndarray) and source.size != 0:
+            self._from_hbcmat(source)
         else:
-            self._bits = 0
+            self._bits = -1
+            self._hbc_size = 0
+            self._dnaseq = ""
             self._hbcurve = np.array([])
-            self._sequence = ""
-            self._kmered_biseq = np.array([])
+            self._kmer_biseq = np.array([])
+
+            self._a1_val = np.array([])
+            self._a2_val = np.array([])
 
     def __repr__(self):
-        trunc_seq = self.sequence[:10]
-        trunc_seq = trunc_seq + " ..." if len(trunc_seq) else ""
-        hbc_size = self.hbcurve.shape
+        trunc_seq = ""
+        if len(self.dnaseq):
+            trunc_seq = self._dnaseq[:10]
+            trunc_seq = trunc_seq + " ..." if len(trunc_seq) else ""
+
+        hbc_size = "None"
+        if self.hbcmat.size:
+            hbc_size = self.hbcmat.shape
+
         hbc_bits = self.bits
         return f"HilbertCurve:\n" + \
                f"Sequence: {trunc_seq}\n" + \
@@ -136,214 +156,166 @@ class HilbertCurve:
             for i in range(len(sequence) - kmer + 1)
         ])
 
-    def from_sequence(self, seq: str, kmer: int = 4, mask_homo: bool = False,
-                      flank: int = 25, pads: int = -1):
-        self._sequence = copy.deepcopy(seq)
+    def _from_dnaseq(self, dnaseq: str, kmer=None, strand=None):
+        kmer = self._kmer if kmer is None else kmer
+        strand = self._strand if strand is None else strand
 
-        biseq = "".join([B2M[base] for base in seq])
-        a1_seq, a2_seq = biseq[0::2], biseq[1::2]
-        self._a1_idx = self._mkmers(a1_seq, kmer)
-        self._a2_idx = self._mkmers(a2_seq, kmer)
+        self._dnaseq = copy.deepcopy(dnaseq)
 
-        biseq_len = len(self._a1_idx) + len(self._a2_idx)
+        biseq = "".join([B2M[base] for base in dnaseq])
+        self._a1_val = self._mkmers(biseq[0::2], kmer)
+        self._a2_val = self._mkmers(biseq[1::2], kmer)
+
+        biseq_len = len(self._a1_val) + len(self._a2_val)
         self._bits = calc_bits(biseq_len)
 
-        if mask_homo:
-            if self._a1_idx.size != self._a2_idx.size:
-                raise AllelicDiffLenError("Alleles should have equal length!")
+        self._hbc_size = int((2 ** self._bits) ** 2)
+        # Allele 1 should be always on the left-hand side.
+        if strand in [1, "1", "+"]:
+            self._kmer_biseq = np.append(self._a1_val, self._a2_val[::-1])
+        else:
+            self._kmer_biseq = np.append(self._a1_val[::-1], self._a2_val)
 
-            het_sites = (self._a1_idx != self._a2_idx).nonzero()[0]
-            if het_sites.size:
-                max_idx = self._a1_idx.size
-                masks = [
-                    np.arange(max(x - flank, 0), min(x + flank, max_idx))
-                    for x in het_sites ]
-                masks = np.concatenate(masks, axis=None)
-                trans = np.zeros_like(self._a1_idx)
-                trans[masks] = 1
-                self._a1_idx, self._a2_idx = self._a1_idx * trans, self._a2_idx * trans
-            else:
-                self._logman.info("No heterozygous sites was found")
-
-        hcwidth = 2 ** self._bits
-        min_hbc_size = int(hcwidth ** 2)
-        if biseq_len != min_hbc_size:
-            pads_array = np.zeros(int((min_hbc_size - biseq_len)/2)) + pads
-            self._a1_idx = np.append(self._a1_idx, pads_array)
-            self._a2_idx = np.append(self._a2_idx, pads_array)
-
-        self._kmered_biseq = np.append(self._a1_idx[::-1], self._a2_idx)
-
-        self._locus = decode(np.arange(min_hbc_size), 2, self._bits)
-        self._hbcurve = np.zeros(min_hbc_size).reshape((1, hcwidth, hcwidth))
-        for idx in np.arange(min_hbc_size):
-            x, y = self._locus[idx]
-            self._hbcurve[0, y, x] = self._kmered_biseq[idx]
+        self._locus = decode(np.arange(self._hbc_size), 2, self._bits)
 
         return self
 
-    def from_hbcmat(self, hbmatrix: np.ndarray, make_seq=True):
-        _, hcwidth, hcheight = hbmatrix.shape
+    def _from_hbcmat(self, hbcmat: np.ndarray, strand=1, dtype=None):
+        """Construct an instance from existing Hilbert curve matrix"""
+        if strand is None:
+            strand = self._strand
+
+        if dtype is None:
+            dtype = self._dtype
+
+        self._hbcurve = copy.deepcopy(hbcmat)
+
+        _, hcwidth, hcheight = hbcmat.shape
         if hcwidth != hcheight:
             raise HbmatrixNotSquareErr("The HilbertCurve should be a square.")
 
-        min_hbc_size = hcwidth * hcheight
-        self._bits = calc_bits(min_hbc_size)
-        self._locus = decode(np.arange(min_hbc_size), 2, self._bits)
+        self._hbc_size = hbcmat.size
+        self._bits = calc_bits(self._hbc_size)
 
-        self._hbcurve = copy.deepcopy(hbmatrix)
-        self._kmered_biseq = np.zeros(min_hbc_size)
+        self._locus = decode(np.arange(self._hbc_size), 2, self._bits)
+        self._kmer_biseq = np.zeros(self._hbc_size, dtype=dtype)
         for i, (x, y) in enumerate(self._locus):
-            self._kmered_biseq[i] = self._hbcurve[0, y, x]
+            self._kmer_biseq[i] = hbcmat[0, y, x]
 
-        n_kmers = int(min_hbc_size/2)
-        self._a1_idx = self._kmered_biseq[:n_kmers][::-1]
-        self._a2_idx = self._kmered_biseq[n_kmers:]
+        a12_len = int(self._hbc_size / 2)
+        assert a12_len * 2 == self._hbc_size, "HBcurve size should be even."
 
-        self._sequence = ""
-        if make_seq:
-            for p_a1_idx, p_a2_idx in zip(self._a1_idx, self._a2_idx):
-                if p_a1_idx in self._idx2mer and p_a2_idx in self._idx2mer:
-                    p_a1_mer = self._idx2mer[p_a1_idx]
-                    p_a2_mer = self._idx2mer[p_a2_idx]
-                    self._sequence += M2B[p_a1_mer[0] + p_a2_mer[0]]
-                else:
-                    for a1_base, a2_base in zip(p_a1_mer[1:], p_a2_mer[1:]):
-                        self._sequence += M2B[a1_base + a2_base]
-                    break
+        self._a1_val = self._kmer_biseq[:a12_len]
+        self._a2_val = self._kmer_biseq[a12_len:]
+        if strand in [1, "1", "+"]:
+            self._a2_val = self._a2_val[::-1]
+        else:
+            self._a1_val = self._a1_val[::-1]
+
+        self._dnaseq = ""
+        self._is_hbcmat = True # Footprint tracker
+
+        return self
+
+    def subset(self, length: int = 1024):
+        lf_bound = int((self._hbc_size - 2 * length) / 2)
+        rt_bound = lf_bound + 2 * length
+
+        self._kmer_biseq = self._kmer_biseq[lf_bound:rt_bound]
+        biseq_len = self._kmer_biseq.size # Update class-wide variables.
+
+        # If we subset the kmer_biseq, the self._locus should be re-calculated
+        self._bits = calc_bits(biseq_len)
+        self._hbc_size = int((2 ** self._bits) ** 2)
+        self._locus = decode(np.arange(self._hbc_size), 2, self._bits)
+
+        if self._dnaseq:
+            if self._strand in [1, "1", "+"]:
+                self._dnaseq = self._dnaseq[-length:]
+            else:
+                self._dnaseq = self._dnaseq[:length]
+
+        # TODO: dulicated code, try to use a method.
+        a12_len = int(self._hbc_size / 2)
+        assert a12_len * 2 == self._hbc_size, "HBcurve size should be even."
+
+        self._a1_val = self._kmer_biseq[:a12_len]
+        self._a2_val = self._kmer_biseq[a12_len:]
+        if self._strand in [1, "1", "+"]:
+            self._a2_val = self._a2_val[::-1]
+        else:
+            self._a1_val = self._a1_val[::-1]
+
+        self._is_subset = True  # Footprint tracker
 
         return self
     
-    def subset(self, length: int = 1024, strand = 1, **kwargs):
-        if strand in [-1, "-1", "-"]:
-            return HilbertCurve(self._sequence[:length], **kwargs)
+    def mask_homo(self, flank: int = 25, fills: int = -1):
+        het_sites = (self._kmer_biseq == self._kmer_biseq[::-1]).nonzero()[0]
+        if het_sites.size:
+            masks = [ np.arange(max(x-flank, 0), min(x+flank, self._hbc_size))
+                      for x in het_sites ]
+            masks = np.concatenate(masks, axis=None)
+            self._kmer_biseq[masks] = fills
 
-        return HilbertCurve(self._sequence[length:], **kwargs)
+            self._is_masked = True # Footprint tracker
+
+        return self
+
+    def get_hbcmat(self, fills=-1, dtype=None):
+        if dtype is None:
+            dtype = self._dtype
+
+        hcwidth = int(2 ** self._bits)
+        hbcurve = np.full(self._hbc_size, fills, dtype=dtype)
+        hbcurve = hbcurve.reshape((1, hcwidth, hcwidth))
+
+        start_idx = int((self._hbc_size - self._kmer_biseq.size) / 2)
+        end_idx = self._hbc_size - start_idx
+
+        idx = start_idx
+        while start_idx <= idx < end_idx:
+            x, y = self._locus[idx]
+            hbcurve[0, y, x] = self._kmer_biseq[idx - start_idx]
+            idx += 1
+
+        return hbcurve
+
+    def get_dnaseq(self, strand="1"):
+        if self._is_masked:
+            self._logman.warning("The instance was masked, no DNA sequence was"
+                                 " available.")
+            return ""
+
+        if self._is_hbcmat:
+            self._logman.warning("The source is a HilbertCurve matrix, no DNA"
+                                 " sequence was available.")
+            return ""
+
+        return self._dnaseq
 
     @property
     def bits(self):
         return self._bits
 
     @property
-    def hbcurve(self):
-        return self._hbcurve
+    def hbcmat(self):
+        return self.get_hbcmat()
+
+    @property
+    def dnaseq(self):
+        return self.get_dnaseq()
 
     @property
     def kmered_seq(self):
-        return self._kmered_biseq
-
-    @property
-    def sequence(self):
-        return self._sequence
+        return self._kmer_biseq
 
     @property
     def allelic_attrs(self):
-        return self._a1_idx, self._a2_idx
+        return self._a1_val, self._a2_val
 
 
-class BEDDict(csv.DictReader):
-    def __init__(self, csvfile, idx_col=0, row_key_tran=None, **kwargs):
-        self._row_key_tran = row_key_tran
-
-        if csvfile is None:
-            self._csv_handler = None
-            self._metadict = None
-            self._colkeys = None
-            self._rowkeys = None
-        else:
-            self._csv_handler = open(csvfile, "r")
-            super(BEDDict, self).__init__(self._csv_handler, **kwargs)
-            self._mk_metadict(idx_col)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, tb):
-        if exc_type is not None:
-            traceback.print_exception(exc_type, exc_value, tb)
-
-        if hasattr(self._csv_handler, "close"):
-            self._csv_handler.close()
-
-    def __getitem__(self, key):
-        if self._metadict:
-            if key in self._metadict:
-                return self._metadict[key]
-        return {}
-
-    def __contains__(self, key):
-        return key in self._metadict
-
-    def __len__(self):
-        return 0 if self._rowkeys is None else len(self._rowkeys)
-
-    def _mk_metadict(self, idx_col, discard_idx_col=False):
-        _metadict = OrderedDict()
-        _colkeys, _rowkeys = [], []
-        for idx, record in enumerate(self):
-            row_key, col_key = idx, "Index"
-            if isinstance(idx_col, int):
-                if idx_col >= 0:
-                    col_key, row_key = list(record.items())[idx_col]
-            elif isinstance(idx_col, (list, tuple)):
-                rc_key = [r for i, r in enumerate(record.items())
-                          if i in idx_col]
-                col_key = tuple([key[0] for key in rc_key])
-                row_key = tuple([key[1] for key in rc_key])
-
-                if isinstance(self._row_key_tran, (tuple, list)):
-                    if len(self._row_key_tran) != len(row_key):
-                        raise ValueError("row_key_tran functions should match"
-                                         " row_key one by one")
-                    row_key = [t(k) if callable(t) else k
-                               for t, k in zip(self._row_key_tran, row_key)]
-                    row_key = tuple(row_key)
-            else:
-                raise TypeError(f"Unsupported key type: {type(idx_col)}")
-
-            if row_key in _metadict:
-                raise KeyError("Duplicated key entry")
-
-            if discard_idx_col:
-                if isinstance(idx_col, int):
-                    record.pop(col_key)
-                elif isinstance(idx_col, (list, tuple)):
-                    for key in col_key:
-                        record.pop(key)
-                else:
-                    raise TypeError(f"Unsupported key type: {type(idx_col)}")
-
-            _metadict[row_key] = record
-            if idx == 0:
-                _colkeys = list(record.keys())
-            _rowkeys.append(row_key)
-
-        self._metadict = _metadict
-        self._colkeys = _colkeys
-        self._rowkeys = _rowkeys
-
-    @property
-    def csv_handler(self):
-        return self._csv_handler
-
-    @property
-    def meta_dict(self):
-        return self._metadict
-
-    @property
-    def row_keys(self):
-        return self._rowkeys
-
-    @property
-    def col_keys(self):
-        return self._colkeys
-
-    def close(self):
-        if not self._csv_handler.closed:
-            self._csv_handler.close()
-
-
-def _makedb(vcf, bed, fasta, db_path, shift, meta=None, process=1):
+def create_database(vcf, bed, fasta, db_path, shift, meta=None, kmer: int = 4):
     """Make HDF5 database.
 
     Make a HDF5 database from given genetic variants (SNP) for specific genome
@@ -352,7 +324,7 @@ def _makedb(vcf, bed, fasta, db_path, shift, meta=None, process=1):
     def _parse_bed(itvl, sep="\t"):
         itvls = itvl.split(sep)
         if len(itvls) < 6:
-            return None
+            raise ValueError("Require the BED file with at least 6 fields.")
         chrom, start, end, name, _, strand, *_ = itvls
         return chrom, start, end, name, strand
 
@@ -361,7 +333,7 @@ def _makedb(vcf, bed, fasta, db_path, shift, meta=None, process=1):
         samples = variants.header.samples
 
     with TabixFile(bed) as intervals, FastaFile(fasta) as sequence, \
-            BEDDict(meta) as metadata:
+            CSVDict(meta) as metadata:
         for per_itvl in intervals.fetch():
             itvl_lst = _parse_bed(per_itvl)
             if itvl_lst is None:
@@ -404,8 +376,8 @@ def _makedb(vcf, bed, fasta, db_path, shift, meta=None, process=1):
                         meta_info = metadata[per_sample]
                         if meta_info:
                             attr_lst.update(meta_info)
-                            hbcurve = HilbertCurve(sub_seqs).hbcurve
-                            hdf5db.add_matrix(hbcurve, per_sample, attr_lst)
+                            hbc = HilbertCurve(sub_seqs, kmer, strand).hbcmat
+                            hdf5db.add_matrix(hbc, per_sample, attr_lst)
 
 
 def makedb(args: Namespace, logman: LogManager = LogManager("Make DB")):
@@ -424,5 +396,6 @@ def makedb(args: Namespace, logman: LogManager = LogManager("Make DB")):
     logman.info(f"No. base pairs:   {n_base_pairs}")
     logman.info(f"Output directory: {output_dir}")
 
-    _makedb(vcf=genetic_variants, bed=genome_intervals, fasta=reference_genome,
-            db_path=output_dir, shift=n_base_pairs, meta=metadata_table)
+    create_database(vcf=genetic_variants, bed=genome_intervals,
+                    fasta=reference_genome, db_path=output_dir,
+                    shift=n_base_pairs, meta=metadata_table)

@@ -85,17 +85,17 @@ set -Ee -o pipefail
 ## Utilities {
 #
 # Error information, exit -1
-erro() {
+err() {
   echo -e "[E]: $1" >&2 && exit -1
 }
 
 # Warning information
-warn() {
+wrn() {
   echo -e "[W]: $*" >&2
 }
 
 # General information
-info() {
+msg() {
   echo -e "[I]: $*"
 }
 
@@ -145,7 +145,7 @@ while true; do
 done
 
 # Check the config file
-[[ -f ${config:?Missing -c/--conf} ]] && . $config || erro "Not found $config"
+[[ -f ${config:?Missing -c/--conf} ]] && . $config || err "Not found $config"
 # } // CLI options
 
 # This is an example config which can be specified by -c/--conf.
@@ -238,13 +238,13 @@ do_cleanup=true
 #
 stepName=STARBuildGenomeIndex
 if [ -d $genomeDir ]; then
-  warn "Found $genomeDir, skip $stepName"
+  wrn "Found $genomeDir, skip $stepName"
 else
   [[ $genomeFastaFile"xxx" == "xxx" ]] \
-    && erro "No genome index found, please give genome fasta file"
+    && err "No genome index found, please give genome fasta file"
 
   [[ $genomeAnnotationFile"xxx" == "xxx" ]] \
-    && erro "No genome annotation found, please give genome annotation file"
+    && err "No genome annotation found, please give genome annotation file"
 
   mem=150G
   cpus=15
@@ -272,7 +272,7 @@ STAR \
   --outFileNamePrefix $genomeDir/starGenomeIndex
 EOF
 )
-  info "$stepName was submitted: $STARGenomeIndexJobId ..."
+  msg "$stepName was submitted: $STARGenomeIndexJobId ..."
 fi
 # } // STAR: Generate STAR genome index
 
@@ -281,7 +281,7 @@ fi
 #
 stepName=WASPCreateSnpHdf5Database
 if [ -d $snpH5dbDir ]; then
-  warn "Found $snpH5dbDir, skip $stepName"
+  wrn "Found $snpH5dbDir, skip $stepName"
 else
   mem=5G
   cpus=1
@@ -330,7 +330,7 @@ module list
 rm -fr $tmpDir/snpH5dbTmpDir
 EOF
 )
-  info "$stepName was submitted: $WaspCreateSnpHdf5DatabaseJobId ..."
+  msg "$stepName was submitted: $WaspCreateSnpHdf5DatabaseJobId ..."
 fi
 # } // Generate SNP HDF5 database for WASP
 
@@ -389,7 +389,7 @@ module list
   --trim_poly_x
 EOF
 )
-  info $stepName was submitted: $fastpPreprocJobId ...
+  msg $stepName was submitted: $fastpPreprocJobId ...
 fi
 # } // FASTP: Preprocessing fastq files.
 
@@ -447,7 +447,7 @@ mv -f $starTmpDir/$fastqId.newrg.bam $starTmpDir/$fastqId.bam
 samtools index -@ $cpus $starTmpDir/$fastqId.bam
 EOF
 )
-  info "$stepName was submitted: $STARMappingJobId ..."
+  msg "$stepName was submitted: $STARMappingJobId ..."
 fi
 # } // Mapping reads to genome 
 
@@ -511,7 +511,7 @@ samtools view \
 rm -f $waspTmpDir/$fastqId.keep.sam $waspTmpDir/$fastqId.to.remap.sam
 EOF
 )
-  info "$stepName was submitted: $WaspRMBFindIntersectedSnpsJobId ..."
+  msg "$stepName was submitted: $WaspRMBFindIntersectedSnpsJobId ..."
   # } // Find intersected SNPs
 
   # STAR: Remapping by STAR for WASP {
@@ -557,7 +557,7 @@ mv -f $waspTmpDir/$fastqId.remapAligned.sortedByCoord.out.bam \
 samtools index -@ $cpus $waspTmpDir/$fastqId.remap.bam
 EOF
 )
-  info "$stepName was submitted: $WaspRMBRemappingJobId ..."
+  msg "$stepName was submitted: $WaspRMBRemappingJobId ..."
   # } // STAR: Remapping by STAR for WASP
 
   # WASP: RMB filtering and removing duplication {
@@ -688,7 +688,7 @@ if [[ rmdup == true ]]; then
 fi
 EOF
 )
-  info "$stepName was submitted: $WaspRMBFilterAndRmDupJobId ..."
+  msg "$stepName was submitted: $WaspRMBFilterAndRmDupJobId ..."
   # } // WASP: RMB filtering and removing duplication
 fi
 # } // WASP: calibration
@@ -731,7 +731,7 @@ if [[ $do_ascan == true ]]; then
   mv $ascanTmpDir/*_aScan.txt $ascanOptDir/${fastqId}_ascan.txt
 EOF
 )
-  info "$stepName was submitted: $aScanEstimateASEJobId ..."
+  msg "$stepName was submitted: $aScanEstimateASEJobId ..."
 fi
 # } // aScan: Estimate transcript ASE
 
@@ -786,7 +786,7 @@ if [[ do_nondup == true ]]; then
 fi
 EOF
 )
-  info "$stepName was submitted: $GatkASEReadCounterJobId ..."
+  msg "$stepName was submitted: $GatkASEReadCounterJobId ..."
 fi
 # } // GATK: ASEReadCounter counts reads allelicly
 
@@ -857,7 +857,7 @@ byase stats -d $byaseTmpDir/inference
 rm -fr $byaseTmpDir/inference/theano_cache
 EOF
 )
-  info "$stepName was submitted: $ByaseEstimateASEJobId ..."
+  msg "$stepName was submitted: $ByaseEstimateASEJobId ..."
 fi
 # } // Byase estimates ASE effects
 
@@ -906,7 +906,7 @@ rm -fr $tmpDir/$fastqId $fastqDir/$fastqPrefix${fastqId}_R{1,2}$fastqSuffix
 gzip $logDir/*-$fastqId-*.log
 EOF
 )
-  info "$stepName was submitted: $CollectOutputAndCleanupJobId ..."
+  msg "$stepName was submitted: $CollectOutputAndCleanupJobId ..."
 fi
 # } // Collect output and clean up
 

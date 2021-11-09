@@ -93,8 +93,9 @@ class SubsetHilbertCurve:
         hbcurve, attrs = record
         strand = attrs.get(self._strand_key, 1)
 
+        hbcurve = HilbertCurve(hbcurve, self._kmers, strand)
         if self._n_bp > 0:
-            hbcurve = HilbertCurve(hbcurve).subset(self._n_bp, strand)
+            hbcurve = hbcurve.subset(self._n_bp)
 
         return hbcurve, attrs
 
@@ -109,7 +110,11 @@ class XyTransformer:
         label = attrs.get(self._label_key, None)
         if label is not None:
             label = self._adj_label(label)
-        return hbcurve.hbcurve, label
+
+        if isinstance(hbcurve, HilbertCurve):
+            hbcurve = hbcurve.hbcmat
+
+        return hbcurve, label
 
 
 class ASEDataset(Dataset):
@@ -142,6 +147,7 @@ class ASEDataset(Dataset):
         record = self._database.get(idx)
         record = (record[()], record.attrs)
         _hbcurve, _attrs = self._apply_transformer(record, self._transformers)
+
         return (_hbcurve, _attrs)
 
     def __contains__(self, key):
@@ -157,13 +163,25 @@ class ASEDataset(Dataset):
 
         return record
 
-    def _items(self, idx=None, labels=True): # Yield items.
+    def _items(self, idx=None, labels=True, apply_trans=None):
         pos = 1 if labels else 0
+
         if idx is None:
-            for idx_ in range(len(self)):
-                yield self[idx_][pos]
+            idx = self._samples
+        elif isinstance(idx, int) and 0 <= idx < len(self):
+            idx = [self._samples[idx]]
+        elif isinstance(idx, str) and idx in self:
+            idx = [idx]
         else:
-            yield self[idx][pos]
+            raise KeyError()
+
+        for per_idx in idx:
+            record = self._database.get(per_idx)
+            record = (record[()], record.attrs)
+            if apply_trans:
+                yield self._apply_transformer(record, apply_trans)[pos]
+            else:
+                yield self._apply_transformer(record, self._transformers)[pos]
 
     @property
     def samples(self):
@@ -171,9 +189,9 @@ class ASEDataset(Dataset):
 
     def get_labels(self, idx=None):
         """Get labels."""
-        return self._items(idx)
+        return self._items(idx, apply_trans=XyTransformer())
 
     def get_matrix(self, idx=None):
         """Get matrix."""
-        return self._items(idx, False)
+        return self._items(idx, labels=False)
 

@@ -61,10 +61,8 @@ class Predictor:
         # The database contains Hilbert curve converted from sequence
         self._dataset = dataset
 
-        # Containers to store prediction restuls
-        self._samples = []
-        self._labels = []
-        self._probs = []
+        # Containers to store prediction results and sample information
+        self._results = OrderedDict()
 
         # Container to store attributions
         self._attrs = {}
@@ -93,7 +91,7 @@ class Predictor:
     def _predict(self, matrix):
         # Predict the given dataset.
         if isinstance(matrix, HilbertCurve):
-            matrix = matrix.hbcurve
+            matrix = matrix.hbcmat
 
         matrix = Variable(torch.Tensor(np.expand_dims(matrix, 0)))
         logit = self._model(matrix)
@@ -105,7 +103,7 @@ class Predictor:
         """Calculate attributions."""
         # Fetch matrix
         if isinstance(matrix, HilbertCurve):
-            matrix = matrix.hbcurve
+            matrix = matrix.hbcmat
 
         matrix = Variable(torch.Tensor(np.expand_dims(matrix, 1)))
 
@@ -146,7 +144,7 @@ class Predictor:
     @property
     def predictions(self):
         return {s: {"sample": s, "label": l, "prob": p}
-                for s, l, p in zip(self._samples, self._labels, self._probs)}
+                for s, (l, p, _) in self._results.items()}
 
     @property
     def attributions(self):
@@ -162,13 +160,11 @@ class Predictor:
         # _label = {0: "ASEto0", 1: "NonASE", 2: "ASEto2", None: "Unknown"}
         self._logman.info("Sample ID, Pred label, Pred prob")
         for per_sample in sample_ids:
-            hbcurve, _ = self._load_sample(per_sample)
+            hbcurve, hbcattr = self._load_sample(per_sample)
             prob, label = self._predict(hbcurve)
             self._logman.info(f"{per_sample: >9}, {label: >10}, {prob: >10.3}")
 
-            self._samples.append(per_sample)
-            self._labels.append(label)
-            self._probs.append(prob)
+            self._results.update({per_sample: [label, prob, hbcattr]})
 
             if keep_attrs is None or len(keep_attrs) < 1:
                 continue
@@ -199,6 +195,9 @@ class Predictor:
         for p_sample, p_attr_map in self._attrs.items():
             nattrs = len(p_attr_map)
 
+            sample_info = self._results[p_sample]
+            strand = sample_info[-1].get("strand", 1)
+
             fig_width, fig_height = figsize
             mat_ratio = int(fig_height/nattrs)
             seq_ratio = fig_width - mat_ratio
@@ -212,14 +211,19 @@ class Predictor:
 
                 self._logman.info(f"Plotting for {p_sample}")
                 for idx, (p_attr, p_attr_mat) in enumerate(p_attr_map.items()):
-                    attr_hbc = HilbertCurve().from_hbcmat(p_attr_mat, False)
-                    attr_hbc_matrix = attr_hbc.hbcurve.squeeze() * scale
+                    if isinstance(p_attr_mat, HilbertCurve):
+                        attr_hbc = p_attr_mat
+                    else:
+                        attr_hbc = HilbertCurve(p_attr_mat, strand=strand,
+                                                dtype=np.float64)
+
+                    attr_hbc_mat = attr_hbc.get_hbcmat(0.0).squeeze() * scale
                     attr_a1_seq, attr_a2_seq = attr_hbc.allelic_attrs
 
                     norm = mcolors.TwoSlopeNorm(vcenter=0)
                     base = axe[idx, 0].transData
                     tran = mtrans.Affine2D().rotate_deg(90)
-                    axe[idx, 0].pcolormesh(attr_hbc_matrix, cmap="seismic",
+                    axe[idx, 0].pcolormesh(attr_hbc_mat, cmap="seismic",
                                            norm=norm, transform=tran+base)
 
                     axe[idx, 0].set_xticks([])

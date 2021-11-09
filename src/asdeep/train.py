@@ -159,6 +159,7 @@ class Trainer:
     # The exact implementation of train.
     def _train(self, n_epoch, optimer, criterion, splits, batch_size, shuffle,
                log_per_n_epoch=5):
+        # import pdb; pdb.set_trace()
         hline = "{: >6},{: >5},{: >9},{: >9},{: >9},{: >9},{: >9}".format(
             "Act.", "Epo.", "Acc.", "Pre.", "Rec.", "ROCAUC", "Loss")
         self._logman.info("---- Training reports ----")
@@ -258,7 +259,7 @@ class Trainer:
         """Train the model.
 
         Args:
-            n_epoch: Epoches.
+            epoches: Epoches.
             criterion: Method to calculate loss.
             optimizer: Method to optimize the model.
             learning_rate: Learning rate. Works when `optimizer` is None.
