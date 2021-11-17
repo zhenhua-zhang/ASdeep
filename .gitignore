@@ -159,7 +159,11 @@ cython_debug/
 .vscode/
 
 # Files and dirs not related to the project
+# Everything started with _ will be ignored
+**/_*
+.rbcsignore
 _archived/
 configs/
+tutorial/
 temp
 README.pdf

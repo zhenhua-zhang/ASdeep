@@ -29,7 +29,7 @@ sampleId=$sampleId
 
 # Master directory
 projDir=/groups/umcg-bios/tmp01/users/umcg-zzhang/projects/wp_ase_dlp
-workDir=\$projDir/outputs/aseQuan_v3
+workDir=\$projDir/outputs/allelic_read_counts
 
 # SLURM logs
 logDir=\$workDir/\$cohortId/logDir 
@@ -58,7 +58,7 @@ genomeAnnotationFile=\$projDir/inputs/Gencode/gencode.annotation.ensembl_canonic
 
 # Genotypes (GT field is required)
 snpH5dbDir=\$workDir/snpH5dbDir/\$cohortId
-vcfFile=\$projDir/outputs/phasing/all-\$cohortId-singleAlt.vcf.gz
+vcfFile=\$projDir/outputs/haplotypes/all-\$cohortId-singleAlt.vcf.gz
 chromInfoFile=\$projDir/inputs/Ensembl_references/human_g1k_v37_chrom_info.txt
 
 # FASTQ files
@@ -85,9 +85,9 @@ GATKVer=GATK/4.1.4.1-Java-8-LTS  # Only works for GATK/ASEReadCounter
 EOF
 # For BIOS samples you have to rsync files from the old machine (calculon.hpc.rug.nl) to the new one (gearshift.hpc.rug.nl)
   src_dir="umcg-zzhang@172.23.34.247:$fqdir/${fastqId}_*"
-  dst_dir="$pjdir/outputs/aseQuan_v3/$cohortId/tmpDir/"
+  dst_dir="$pjdir/outputs/allelic_read_counts/$cohortId/tmpDir/"
   rsync_cmd="rsync -azqhL $src_dir $dst_dir"
-  sbjob_cmd="$pjdir/scripts/bin/SbatchAseQuantPipeline -c $conffile"
+  sbjob_cmd="$pjdir/scripts/misc/SbatchAseQuantPipeline -c $conffile"
   echo "echo -e \$LINENO: && ${rsync_cmd} && ${sbjob_cmd}" >> $metarunfile
 done < ${idmapfile}
 

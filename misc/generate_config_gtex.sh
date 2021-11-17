@@ -41,7 +41,7 @@ sampleId=$sampleId
 
 # Mater directory
 projDir=~/Documents/projects/wp_ase_dlp
-workDir=\$projDir/outputs/aseQuan_v2
+workDir=\$projDir/outputs/allelic_read_counts
 
 # SLURM logs
 logDir=\$workDir/\$cohortId/logDir 
@@ -69,7 +69,7 @@ genomeAnnotationFile=\$projDir/inputs/Ensembl_references/Homo_sapiens.GRCh37.75.
 
 # Genotypes (GT field is required)
 snpH5dbDir=\$workDir/snpH5dbDir/\$cohortId
-vcfFile=\$projDir/outputs/phasing/gtex/phASER_WASP_GTEx_v8_merged_hq_b37_annot.vcf.gz
+vcfFile=\$projDir/outputs/haplotypes/gtex/phASER_WASP_GTEx_v8_merged_hq_b37_annot.vcf.gz
 chromInfoFile=\$projDir/inputs/Ensembl_references/human_g1k_v37_chrom_info.txt
 
 # FASTQ files

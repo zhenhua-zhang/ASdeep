@@ -4,7 +4,7 @@
 # Created: 2021-04-24
 
 #
-## A utility script to preprocessing variats data for GTEx cohort
+## A utility script to preprocess variants data for GTEx cohort
 #
 
 # Update the resource parameters.
@@ -12,12 +12,11 @@ reqmem=32G
 reqcpus=1
 reqtime=7:59:59
 
-sbatch \
-    --mem $reqmem \
+sbatch --mem $reqmem \
     --time $reqtime \
     --cpus-per-task $reqcpus \
-    --job-name filter-gtex-vars \
-    --output %j-filter_gtex_vars.log \
+    --job-name gtex_genotype_qc \
+    --output %j.gtex_genotype_qc.log \
     <<'EOF'
 #!/bin/bash
 set -Ee -o pipefail
@@ -53,7 +52,7 @@ fi
 ## Filter variants. hq = high quality; nc = no chr
 #
 # Filter variants. Only biallelic SNPs with AF from 0.005 to 0.995 and only 1 alternative allele
-chosen_hq_vars=$optdir/phasing/gtex/$(sed 's/.vcf.gz/_hq.vcf/g' <<<$(basename $raw_vars))
+chosen_hq_vars=$optdir/haplotypes/gtex/$(sed 's/.vcf.gz/_hq.vcf/g' <<<$(basename $raw_vars))
 chr_mapping_file=$iptdir/GTEx/vcf/phASER_WASP_GTEx_v8_merged.chr.txt
 
 bcftools view \
@@ -87,7 +86,7 @@ java -jar $EBROOTPICARD/picard.jar LiftoverVcf \
     -CHAIN $convert_chain \
     -REJECT $reject_vars \
     -WARN_ON_MISSING_CONTIG true \
-    --TMP_DIR $optdir/phasing/gtex
+    --TMP_DIR $optdir/haplotypes/gtex
 
 
 #
@@ -122,7 +121,7 @@ bcftools view \
 ## Clean up
 #
 rm -f $chosen_hq_vars $chosen_hq_nc_b37_vars $chosen_hq_nc_b37_vars.idx $reject_vars
-echo Done
 
+echo Done
 EOF
 

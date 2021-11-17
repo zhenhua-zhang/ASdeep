@@ -51,7 +51,7 @@ set -Eeu -o pipefail
 pjdir=/groups/umcg-bios/tmp01/users/umcg-zzhang/projects/wp_ase_dlp
 
 # Version of phasing
-phasing_version=phasing_v2
+phasing_version=haplotypes
 
 # Working on per chrommsome by jobarray of SLURM
 chrid=${SLURM_ARRAY_TASK_ID:-22}
