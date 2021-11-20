@@ -19,76 +19,66 @@ set -Eeu -o pipefail
 rf_dir=~/Documents/projects/wp_reference
 wk_dir=~/Documents/projects/wp_ase_dlp/inputs/Gencode
 
-source ~/Documents/projects/wp_ase_dlp/scripts/.env/bin/activate
-
 # Fetch Ensembl canonical and protein coding genes and transcripts.
-python -c '#!/usr/bin/env python3
-from argparse import ArgumentParser
-import HTSeq
+in_gff=$rf_dir/Gencode/gtf/gencode.v38.annotation.gtf.gz 
+sub_gtf=$wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh38.gtf
+v37_gtf=$wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh37.gtf
+chain_file=$rf_dir/UCSCGenomeBrowser/chain/hg38ToHg19.over.nochr.chain
 
-# NOTE: The GFF should be sorted.
+awk -F$'\t' -f- <(zcat $in_gff) <<'EOF' | sed 's/^chr//' > $sub_gtf
+/##/ {print; next}
+{
+  if ($1 ~ /chr[MXY]/) { next }
 
-parser = ArgumentParser()
-parser.add_argument("-g", "--gff-file", required=True,
-                    help="Input GFF file. Required")
-parser.add_argument("-o", "--outfile", default="canonical_transcripts.gtf",
-                    help="The output file name. Default: %(default)s")
-opts = parser.parse_args()
-
-gff = HTSeq.GFF_Reader(opts.gff_file, end_included=True)
-cur_gene_rec = []
-for idx, line in enumerate(gff):
-    if line.type not in ["gene", "transcript", "exon"]: continue
-    if line.attr["gene_type"] != "protein_coding": continue
-
-    if line.type == "gene":
-        cur_gene_rec.append(line)
-    elif (hasattr(line, "attr") and "tag" in line.attr
-        and "Ensembl_canonical" in line.attr["tag"]):
-        cur_gene_rec.append(line)
-
-with open(opts.outfile, "w") as outhandle:
-    for line in cur_gene_rec:
-        line = line.get_gff_line(with_equal_sign=True)
-        line = line.replace("; ", ";").replace("\"", "").replace("chr", "")
-
-        if line[0] not in ["X", "Y", "M"]:
-            outhandle.write(line)
-' -g $rf_dir/Gencode/gff3/gencode.v38.annotation.gff3.gz \
-  -o $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh38.gff3
+  if ($9 ~ /\<protein_coding\>/)
+  {
+    if ($3 == "gene") { print }
+    else if ($3 == "transcript" || $3 == "exon") {
+      if ($9 ~ /\<Ensembl_canonical\>/) {print}
+    }
+  }
+}
+EOF
 
 # Liftover the obtained gene set coordinates from GRCh38 to GRCh37.
-CrossMap.py gff $rf_dir/UCSCGenomeBrowser/chain/hg38ToHg19.over.nochr.chain \
-  $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh38.gff3 \
-  $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh37.gff3
+CrossMap.py gff $chain_file $sub_gtf $v37_gtf
 
 # We also need to remove unmapped records
-python -c '
-import sys
-bad_rec = []
-with open(sys.argv[1]) as ipf:
-    for line in ipf:
-        rec_lst = line.split("\t")
-        if len(rec_lst) != 9: continue
-        for attr in rec_lst[-1].split(";"):
-            if attr.startswith("gene_id"):
-                bad_rec.append(attr.replace("gene_id=", ""))
+# NOTE: A small trick to sort gene/transcript/exon, check key_array line.
+awk -F$'\t' -f- $v37_gtf*.unmap $v37_gtf <<'EOF' \
+  | sort -t$'\t' -k2,2 -k5,5n -k1,1 -k6,6n \
+  | cut -f2- -d$'\t' \
+  >| $(dirname $v37_gtf)/tmp.gtf
+BEGIN {key_array["gene"]=1; key_array["transcript"]=2; key_array["exon"]=3}
+FNR == NR {
+  if ($3 == "gene")
+  {
+    split($9, attr_dict, ";")
+    split(attr_dict[1], gene_id, " ")
+    ensg_id = gensub(/"(.+)"/, "\\1", "g", gene_id[2])
 
-with open(sys.argv[2]) as ipf, open(sys.argv[3], "w") as opf:
-    for line in ipf:
-        rec_lst = line.split("\t")
-        if len(rec_lst) != 9: continue
-        attr_dct = {k:v for k, v in [l.split("=") for l in rec_lst[-1].split(";")]}
-        if attr_dct["gene_id"] in bad_rec: continue
+    unmap[ensg_id] = 1
+  }
 
-        opf.write(line)
-' $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh37.gff3.unmap \
-  $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh37.gff3 \
-  $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh37.tmp.gff3
+  next
+}
+{
+  split($9, attr_dict, ";")
+  split(attr_dict[1], gene_id, " ")
+  ensg_id = gensub(/"(.+)"/, "\\1", "g", gene_id[2])
 
-mv $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh37.tmp.gff3 \
-  $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh37.gff3
+  if (unmap[ensg_id] != 1) {print key_array[$3]"\t"$0}
+}
+EOF
+
+mv -f $(dirname $v37_gtf)/tmp.gtf $v37_gtf
+
+# Compress and index
+module purge
+module load HTSlib/1.10.2-GCCcore-7.3.0
+
+bgzip $v37_gtf
+tabix -f -p gff $v37_gtf.gz
 
 # Remove the temporary file.
-rm -f $wk_dir/gencode.v38.annotation.ensembl_canonical.protein_coding.gff3.gz
-rm -f $wk_dir/gencode.annotation.ensembl_canonical.protein_coding.GRCh38.gff3
+rm -f $sub_gtf $v37_gtf*.unmap
