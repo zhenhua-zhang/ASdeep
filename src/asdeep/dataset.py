@@ -6,8 +6,6 @@
 import math
 
 import h5py as h5
-import numpy as np
-from hilbert import decode
 from torch.utils.data import Dataset
 
 from .database import HilbertCurve

@@ -9,25 +9,17 @@ from argparse import Namespace
 
 import h5py as h5
 import numpy as np
-from hilbert import decode
 from pysam.libcbcf import VariantFile
 from pysam.libctabix import TabixFile
 from pysam.libcfaidx import FastaFile
 
-try:
-    from .zutils import B2M
-    from .zutils import M2B
-    from .zutils import calc_bits
-    from .zutils import LogManager
-    from .zutils import make_all_mers
-    from .tabdict import CSVDict
-except ImportError as e:
-    from zutils import B2M
-    from zutils import M2B
-    from zutils import calc_bits
-    from zutils import LogManager
-    from zutils import make_all_mers
-    from tabdict import CSVDict
+from .zutils import B2M
+from .zutils import M2B
+from .zutils import calc_bits
+from .zutils import LogManager
+from .zutils import make_all_mers
+from .hilbert import decode
+from .tabdict import CSVDict
 
 
 class AllelicDiffLenError(Exception):
@@ -281,7 +273,8 @@ class HilbertCurve:
 
         return hbcurve
 
-    def get_dnaseq(self, strand="1"):
+    # TODO: The fuction doesn't work as expect, more features will be added.
+    def get_dnaseq(self):
         if self._is_masked:
             self._logman.warning("The instance was masked, no DNA sequence was"
                                  " available.")
