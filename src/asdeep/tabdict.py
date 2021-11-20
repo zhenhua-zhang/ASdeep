@@ -186,6 +186,9 @@ class GTFDict(TabDict):
     def _parse_attrs(attr):
         fields = [x.strip() for x in attr.strip().split(";")]
         for per_field in fields:
+            if not per_field:
+                continue
+
             if per_field.endswith(";"):
                 per_field = per_field[:-1]
 
