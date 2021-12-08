@@ -8,11 +8,11 @@ import sys
 import copy
 import logging
 import itertools as it
-
 from collections import OrderedDict
 
 import numpy as np
-import matplotlib.pyplot as plt
+import torch.nn as nn
+import torchvision.models as models
 
 # Reference: https://genomevolution.org/wiki/index.php/Ambiguous_nucleotide
 M2B = { # monoallelic base-pair to biallelic base.
@@ -42,16 +42,20 @@ CHRLEN = OrderedDict(
 
 # Logging manager.
 class LogManager(logging.Logger):
-    def __init__(self, name, level=logging.INFO, logstream: bool =True,
-                 logfile: str=""):
+    def __init__(self, name, level=logging.INFO, logstream: bool = True,
+                 logfile: str = ""):
         super(LogManager, self).__init__(name)
 
-        fmt = logging.Formatter("{levelname: >8}|{asctime}|{name: >8}| {message}",
-                                style="{", datefmt="%Y-%m-%d,%H:%M:%S")
-        if logstream: self._add_hadler(logging.StreamHandler(), level, fmt)
-        if logfile: self._add_hadler(logging.FileHandler(logfile), level, fmt)
+        fmt = logging.Formatter(
+            "{levelname: >8}|{asctime}|{name: >8}| {message}",
+            style="{", datefmt="%Y-%m-%d,%H:%M:%S")
+        if logstream:
+            self._add_handler(logging.StreamHandler(), level, fmt)
 
-    def _add_hadler(self, hdl, lvl, fmt):
+        if logfile:
+            self._add_handler(logging.FileHandler(logfile), level, fmt)
+
+    def _add_handler(self, hdl, lvl, fmt):
         hdl.setLevel(lvl)
         hdl.setFormatter(fmt)
         self.addHandler(hdl)
@@ -61,6 +65,7 @@ def flatten(l):
     """Flatten a list recursively.
     Args:
         l (list): The list to be flatten.
+
     Returns:
         out_list (list): The flatten list.
     """
@@ -90,19 +95,6 @@ def insert_or_append(dict1, dictlike2):
     return dict1
 
 
-def make_gif(fp_in, fp_out, duration=400, loop=0):
-    import glob
-    from PIL import Image
-
-    try:
-        fp_in_imgs = glob.glob(fp_in)
-        img, *imgs = [Image.open(f) for f in sorted(fp_in_imgs)]
-        img.save(fp=fp_out, format="GIF", append_images=imgs, save_all=True,
-                duration=duration, loop=loop)
-    except ValueError as err:
-        print(err)
-
-
 def fdr_bh(p):
     """A implementation of FDR by Benjamini & Hochberg.
 
@@ -110,9 +102,10 @@ def fdr_bh(p):
         StackOverflow: https://stackoverflow.com/a/7451153/11203559
         BH = {
             i <- lp:1L   # lp is the number of p-values
-            o <- order(p, decreasing = TRUE) # "o" will reverse sort the p-values
+            o <- order(p, decreasing=TRUE) # "o" will reverse sort the p-values
             ro <- order(o)
-            pmin(1, cummin(n/i * p[o]))[ro]  # n is also the number of p-values }
+            pmin(1, cummin(n/i * p[o]))[ro]  # n is also the number of p-values
+        }
     """
     p = np.asfarray(p)
     
@@ -122,8 +115,8 @@ def fdr_bh(p):
     l = len(p)
     o = np.argsort(-p)
     ro = np.argsort(o)
-    
-    return np.clip(np.minimum.accumulate(l / np.arange(l, 0, -1) * p[o])[ro], .0, 1.).tolist()
+    acc_min = np.minimum.accumulate(l / np.arange(l, 0, -1) * p[o])[ro]
+    return np.clip(acc_min, .0, 1.).tolist()
 
 
 def fetch_layer_by_path(model, layer_path: str =".layer3[-1].conv1[0]"):
@@ -146,15 +139,7 @@ def fetch_layer_by_path(model, layer_path: str =".layer3[-1].conv1[0]"):
 
 def pickup_model(prebuilt_arch):
     """Pick up a modified models."""
-    try:
-        import torch.nn as nn
-        import torchvision.models as models
-    except ImportError as ime:
-        logging.error("Import error: {}".format(ime))
-        sys.exit(1)
-
     if prebuilt_arch == "resnext":
-        # By default, using the pre-built ResNext.
         net = models.resnext50_32x4d(pretrained=False)
         net.conv1 = nn.Conv2d(1, 64, 11, 2, 3, bias=False)
         net.fc = nn.Linear(2048, 3, bias=True)
@@ -166,7 +151,6 @@ def pickup_model(prebuilt_arch):
         if prebuilt_arch != "alexnet":
             logging.warning("Unsupported prebuilt architecture, using default"
                             " AlexNet!")
-        # Now I moved to AlexNet
         net = models.alexnet(pretrained=False)
         net.features[0] = nn.Conv2d(1, 64, 11, 4, 2)
         net.classifier[6] = nn.Linear(4096, 3, bias=True)
@@ -178,59 +162,80 @@ def parse_verbose(count):
     return min(60 - count * 10, 0)
 
 
-def hcurve_to_img(hbcurve, output_prefix="./", cmap="summer", overlay=None,
-                  overlay_cmap="Reds", overlay_alpha=0.5, scatter=True,
-                  connect=True, color=True, kmer_text=True, figsize=(0, 0),
-                  figfmt="pdf"):
-    """Plot the Hilbert curve."""
-    if sum(figsize) <= 0:
-        _size = max(hbcurve.hcurve_matrix.shape) / 4
-        figsize = (_size, _size)
-
-    fig, ax = plt.subplots(figsize=figsize)
-
-    if scatter:
-        ax.scatter(hbcurve.x_pool, hbcurve.y_pool, c="0", marker=".", alpha=0.5)
-
-    if connect:
-        ax.plot(hbcurve.x_pool, hbcurve.y_pool, color="0", linewidth=0.5,
-                alpha=0.5)
-
-    if color:
-        ax.imshow(hbcurve.hcurve_matrix, cmap=cmap)
-
-        if isinstance(overlay, np.ndarray):
-            ax.imshow(overlay, alpha=overlay_alpha, cmap=overlay_cmap)
-
-    if kmer_text:
-        for i, j in zip(hbcurve.x_pool, hbcurve.y_pool):
-            i, j = int(i), int(j)
-            _kmer_idx = int(hbcurve.hcurve_matrix[j, i])
-            if _kmer_idx != -1:
-                text = hbcurve.kmers_pool[_kmer_idx]
-            else:
-                text = "NULL"
-
-            ax.text(i, j, text, ha="center", va="center",
-                    fontsize="x-small", rotation=45)
-
-    ax.set_axis_off()
-    fig.set_tight_layout(True)
-
-    save_path = "{}hilbert_curve.{}".format(output_prefix, figfmt)
-    fig.savefig(save_path)
-
-    plt.close(fig)
-
-
 def calc_bits(seqlen, bits=0):
-    if seqlen <= pow(2, bits)**2: return bits
+    """Calculate bits for Hilbert curve based on the length of sequence."""
+    if seqlen <= pow(2, bits)**2:
+        return bits
+
     return calc_bits(seqlen, bits+1)
 
 def make_all_mers(k, base="ACGT"):
+    """Create k-mers using given base and the order.
+    """
     mers = it.product(base, repeat=k)
     mer2idx = {"N" * k: 0}
     mer2idx.update({"".join(m): i + 1 for i, m in enumerate(mers)})
     idx2mer = {v: k for k, v in mer2idx.items()}
 
     return mer2idx, idx2mer
+
+
+# FIXME: Current, about to remove this function (Nov 19, 2021).
+# def make_gif(fp_in, fp_out, duration=400, loop=0):
+#     import glob
+#     from PIL import Image
+# 
+#     try:
+#         fp_in_imgs = glob.glob(fp_in)
+#         img, *imgs = [Image.open(f) for f in sorted(fp_in_imgs)]
+#         img.save(fp=fp_out, format="GIF", append_images=imgs, save_all=True,
+#                 duration=duration, loop=loop)
+#     except ValueError as err:
+#         print(err)
+
+
+# FIXME: The function doesn't work anymore, about to remove it (Nov 19, 2021).
+# def hcurve_to_img(hbcurve, output_prefix="./", cmap="summer", overlay=None,
+#                   overlay_cmap="Reds", overlay_alpha=0.5, scatter=True,
+#                   connect=True, color=True, kmer_text=True, figsize=(0, 0),
+#                   figfmt="pdf"):
+#     """Plot the Hilbert curve."""
+#     import matplotlib.pyplot as plt
+#     if sum(figsize) <= 0:
+#         _size = max(hbcurve.hcurve_matrix.shape) / 4
+#         figsize = (_size, _size)
+# 
+#     fig, ax = plt.subplots(figsize=figsize)
+# 
+#     if scatter:
+#         ax.scatter(hbcurve.x_pool, hbcurve.y_pool, c="0", marker=".", alpha=0.5)
+# 
+#     if connect:
+#         ax.plot(hbcurve.x_pool, hbcurve.y_pool, color="0", linewidth=0.5,
+#                 alpha=0.5)
+# 
+#     if color:
+#         ax.imshow(hbcurve.hcurve_matrix, cmap=cmap)
+# 
+#         if isinstance(overlay, np.ndarray):
+#             ax.imshow(overlay, alpha=overlay_alpha, cmap=overlay_cmap)
+# 
+#     if kmer_text:
+#         for i, j in zip(hbcurve.x_pool, hbcurve.y_pool):
+#             i, j = int(i), int(j)
+#             _kmer_idx = int(hbcurve.hcurve_matrix[j, i])
+#             if _kmer_idx != -1:
+#                 text = hbcurve.kmers_pool[_kmer_idx]
+#             else:
+#                 text = "NULL"
+# 
+#             ax.text(i, j, text, ha="center", va="center",
+#                     fontsize="x-small", rotation=45)
+# 
+#     ax.set_axis_off()
+#     fig.set_tight_layout(True)
+# 
+#     save_path = "{}hilbert_curve.{}".format(output_prefix, figfmt)
+#     fig.savefig(save_path)
+# 
+#     plt.close(fig)

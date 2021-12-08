@@ -9,7 +9,6 @@ import traceback
 from argparse import Namespace
 from collections import OrderedDict
 
-import h5py as h5
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -26,6 +25,7 @@ from captum.attr import GuidedGradCam
 from .database import HilbertCurve
 from .dataset import ASEDataset
 from .dataset import SubsetHilbertCurve
+from .dataset import MaskHomoSites
 from .zutils import fetch_layer_by_path
 from .zutils import pickup_model
 from .zutils import LogManager
@@ -65,7 +65,7 @@ class Predictor:
         self._results = OrderedDict()
 
         # Container to store attributions
-        self._attrs = {}
+        self._captum_attrs = {}
 
     def __enter__(self):
         return self
@@ -73,8 +73,6 @@ class Predictor:
     def __exit__(self, exc_type, exc_value, tb):
         if exc_type is not None:
             traceback.print_exception(exc_type, exc_value, tb)
-
-        self
 
     def _load_model(self, model, model_state, model_arch):
         state_dict = torch.load(model_state, map_location=self.device)
@@ -148,7 +146,7 @@ class Predictor:
 
     @property
     def attributions(self):
-        return self._attrs
+        return self._captum_attrs
 
     def predict(self, sample_ids: list, keep_attrs=None):
         """Predict the given input.
@@ -174,17 +172,17 @@ class Predictor:
 
             attr_p_sample = OrderedDict({"HBC": hbcurve})
             for p_attr in keep_attrs:
-                if p_attr not in self._attrs:
+                if p_attr not in self._captum_attrs:
                     p_attr_hbc = self._calc_attrs(hbcurve, label, p_attr)
                     attr_p_sample[p_attr] = p_attr_hbc
                 else:
                     self._logman.warning(f"{p_attr} alreay added, skip it.")
 
-            self._attrs[per_sample] = attr_p_sample
+            self._captum_attrs[per_sample] = attr_p_sample
 
         return self
 
-    def show_attrs(self, figsize=(16, 9), scale=1000, output_dir="./",
+    def show_attrs(self, figsize=(16, 9), scale=1000, out_dir="./",
                    fmt="png"):
         """Show the attributions.
 
@@ -192,7 +190,7 @@ class Predictor:
         Returns:
         Raise:
         """
-        for p_sample, p_attr_map in self._attrs.items():
+        for p_sample, p_attr_map in self._captum_attrs.items():
             nattrs = len(p_attr_map)
 
             sample_info = self._results[p_sample]
@@ -236,7 +234,7 @@ class Predictor:
                         het_site = (np.zeros_like(is_het) + 1)[is_het]
                         axe[idx, 1].scatter(het_pos, het_site)
                         axe[idx, 1].set_yticks([1])
-                        axe[idx, 1].set_ylabel(f"Heterozygous SNPs")
+                        axe[idx, 1].set_ylabel(f"Heterozygous SNPs ({strand})")
                     else:
                         attr_allelic_diff = attr_a1_seq - attr_a2_seq
                         ylim = max(abs(attr_allelic_diff))
@@ -254,7 +252,7 @@ class Predictor:
                     axe[idx, 1].yaxis.tick_right()
 
                 fig.set_tight_layout(True)
-                fig.savefig(f"{output_dir}/{p_sample}_attributions.{fmt}")
+                fig.savefig(f"{out_dir}/{p_sample}_attributions.{fmt}")
 
         return self
 
@@ -263,24 +261,23 @@ def predict(args: Namespace, logman: LogManager=LogManager("Predict")):
     """Predict."""
     database = args.database
     sample_ids = args.sample_ids
-    output_dir = args.output_dir
+    out_dir = args.out_dir
     attributions = args.attributions
     prebuilt_arch = args.prebuilt_arch
     model_state_path = args.model_state_path
     save_fmt = args.save_fmt
+    homo_flank = args.homo_flank
 
-    logman.info(f"Database:     {database}")
-    logman.info(f"Sample IDs:   {sample_ids}")
-    logman.info(f"Model path:   {model_state_path}")
-    logman.info(f"Attribution:  {attributions}")
-    logman.info(f"Output path:  {output_dir}")
-    logman.info(f"Architecture: {prebuilt_arch}")
+    logman.info(f"Database:        {database}")
+    logman.info(f"Sample IDs:      {sample_ids}")
+    logman.info(f"Model path:      {model_state_path}")
+    logman.info(f"Attribution:     {attributions}")
+    logman.info(f"Output path:     {out_dir}")
+    logman.info(f"Architecture:    {prebuilt_arch}")
 
     net = pickup_model(prebuilt_arch)
-    trans = [SubsetHilbertCurve()]
-    with h5.File(database, "r") as h5db:
-        dataset = ASEDataset(database=h5db, transformers=trans)
-        with Predictor(net, model_state_path, dataset, prebuilt_arch) as pred:
-            (pred
-             .predict(sample_ids, attributions)
-             .show_attrs(output_dir=output_dir, fmt=save_fmt))
+    trans = [SubsetHilbertCurve(), MaskHomoSites(flank=homo_flank)]
+    dataset = ASEDataset(dbpath=database, transformers=trans)
+    with Predictor(net, model_state_path, dataset, prebuilt_arch) as pred:
+        (pred.predict(sample_ids, attributions)
+         .show_attrs(out_dir=out_dir, fmt=save_fmt))

@@ -98,7 +98,7 @@ class HilbertCurve:
         2. The allelic sequences are connected at the TSS end, which take the
         strand in consideration.
     """
-    def __init__(self, source=None, kmer: int = 4, strand=1, dtype=np.uint8,
+    def __init__(self, source=None, kmer: int = 4, strand=1, dtype=np.int16,
                  logman: LogManager = LogManager("HilbertCurve")):
         self._logman = logman
         self._mer2idx, self._idx2mer = make_all_mers(kmer)
@@ -243,14 +243,20 @@ class HilbertCurve:
         return self
     
     def mask_homo(self, flank: int = 25, fills: int = -1):
-        het_sites = (self._kmer_biseq == self._kmer_biseq[::-1]).nonzero()[0]
-        if het_sites.size:
-            masks = [ np.arange(max(x-flank, 0), min(x+flank, self._hbc_size))
-                      for x in het_sites ]
-            masks = np.concatenate(masks, axis=None)
-            self._kmer_biseq[masks] = fills
+        het_sites = (self._kmer_biseq != self._kmer_biseq[::-1]).nonzero()[0]
 
-            self._is_masked = True # Footprint tracker
+        if het_sites.size:
+            # import pdb; pdb.set_trace()
+            unmasks = [
+                np.arange(max(x - flank, 0), min(x + flank, self._hbc_size))
+                for x in het_sites ]
+            unmasks = np.concatenate(unmasks, axis=None)
+            masks = np.delete(np.arange(self._kmer_biseq.size), unmasks, None)
+            self._kmer_biseq[masks] = fills
+        else:
+            self._kmer_biseq[:] = fills
+
+        self._is_masked = True # Footprint tracker
 
         return self
 

@@ -3,74 +3,12 @@
 # Created: Mar 12, 2020
 # Updated: Oct 06, 2021
 
-import math
-
+import numpy as np
 import h5py as h5
 from torch.utils.data import Dataset
 
 from .database import HilbertCurve
 from .zutils import LogManager
-from .zutils import fdr_bh
-
-
-class MultipleTestAdjustment:
-    """Adjust p-values for multiple tests.
-
-    This class is a dataset-wide transformer.
-    """
-    def __init__(self,
-                 alpha: float = 0.05,
-                 method: str = "fdr_bh",
-                 logman: LogManager = LogManager("MultipleTestAdjustment")):
-        self.alpha = alpha
-        self.method = method
-        self.logman = logman
-
-    def __call__(self, dataset: list):
-        pval_pool, mtrx_pool, label_pool = [], [], []
-
-        for item in dataset:
-            if len(item) == 1:
-                (matrix, (p_val, label)) = item[0]
-                pval_pool.append(p_val)
-                mtrx_pool.append(matrix)
-                label_pool.append(label)
-            else:
-                self.logman.warning("The length of input dataset should be 1.")
-
-        if self.method == "fdr_bh":
-            pval_pool = fdr_bh(pval_pool)
-        else:
-            raise ValueError("Uknown mutliple test adjustment method: " +
-                             "{}".format(self.method))
-
-        return tuple(zip(mtrx_pool, tuple(zip(pval_pool, label_pool))))
-
-
-class ReshapeMatrixAndPickupLabel:
-    """Reshape the sequence matrix into a given size.
-
-    This class is an element-wise transformer.
-
-    Notes:
-        -1, 0, 1 reprsents ASE effect prone to allele A, no ASE effects, ASE
-        Effects prone to allele B in the raw ASE quantification results,
-        however, both PyTorch and TensorFlow require labels no less than 0.
-    """
-    def __init__(self, pthd: float = 0.05):
-        self.pthd = pthd
-
-    def __call__(self, sample):
-        hbcurve, labels = sample
-
-        matrix = hbcurve.hbcurve
-        n_channel, length, n_type_nucl = matrix.shape
-        length = int(math.sqrt(length * n_type_nucl))
-
-        matrix = matrix.reshape((n_channel, length, length))
-        label = labels[1] + 1 if labels[0] < self.pthd else 1
-
-        return (matrix, label)
 
 
 class SubsetHilbertCurve:
@@ -88,14 +26,37 @@ class SubsetHilbertCurve:
         self._logman = logman
 
     def __call__(self, record: tuple):
-        hbcurve, attrs = record
-        strand = attrs.get(self._strand_key, 1)
+        if not isinstance(record, tuple) or len(record) != 2:
+            raise TypeError("The input should be a tuple of length 2.")
 
-        hbcurve = HilbertCurve(hbcurve, self._kmers, strand)
+        hbcurve, attrs = record
+
         if self._n_bp > 0:
+            strand = attrs.get(self._strand_key, 1)
+            hbcurve = HilbertCurve(hbcurve, self._kmers, strand)
             hbcurve = hbcurve.subset(self._n_bp)
 
         return hbcurve, attrs
+
+class MaskHomoSites:
+    """Mask homozygous sites in the sequnece."""
+    def __init__(self, flank: int = 25, fills = -1, label_key: str = "ASE"):
+        self._flank = flank
+        self._fills = fills
+        self._label_key = label_key
+
+    def __call__(self, record: tuple):
+        if not isinstance(record, tuple) or len(record) != 2:
+            raise TypeError("The input should be a tuple of length 2.")
+
+        hbcurve, attrs = record
+
+        if isinstance(hbcurve, np.ndarray) or isinstance(hbcurve, str):
+            hbcurve = HilbertCurve(hbcurve)
+
+        hbcurve.mask_homo(self._flank, self._fills)
+        return hbcurve.hbcmat, attrs
+
 
 class XyTransformer:
     """Split each h5.Dataset into X (matrix) and y (label)."""
@@ -104,6 +65,9 @@ class XyTransformer:
         self._label_key = label_key
 
     def __call__(self, record: tuple):
+        if not isinstance(record, tuple) or len(record) != 2:
+            raise TypeError("The input should be a tuple of length 2.")
+
         hbcurve, attrs = record
         label = attrs.get(self._label_key, None)
         if label is not None:
@@ -119,32 +83,44 @@ class ASEDataset(Dataset):
     """ASE dataset.
 
     Attributes:
+        samples: All availabel samples in the database.
+
+    Notes:
+        1. ASEDataset inherites PyTorch's Dataset which accelerates data
+        loading by multiprocessing, however, HDF5 database does not support
+        multiprocessing data loading schemes after opening the file. The
+        solution is to open the file for every loading, which could introduce
+        extra resource burden.
     """
-    def __init__(self, database: h5.File, n_cpus: int = 1, transformers=None,
+    def __init__(self, dbpath: str, transformers=None, n_cpus: int = 1,
                  label_key: str = "ASE",
                  logman: LogManager = LogManager("ASEDataset")):
         self._n_cpus = n_cpus
-        self._database = database
+        self._dbpath = dbpath
         self._transformers = transformers
         self._label_key = label_key
         self._logman = logman
 
-        self._samples = list(self._database.keys())
+        with h5.File(dbpath, "r") as database:
+            self._samples = list(database.keys())
 
     def __len__(self):
         return len(self._samples)
 
     def __getitem__(self, idx):
         if isinstance(idx, int):
-            if idx < 0: raise IndexError("Index should be >= 0.")
+            if idx < 0:
+                raise IndexError("Index should be >= 0.")
+
             idx = f"/{self._samples[idx]}"
         elif isinstance(idx, str):
-            if not idx.startswith("/"):
-                idx = f"/{idx}"
+            idx = f"/{idx.strip('/')}"
 
-        record = self._database.get(idx)
-        record = (record[()], record.attrs)
-        _hbcurve, _attrs = self._apply_transformer(record, self._transformers)
+        self._logman.debug(idx)
+        with h5.File(self._dbpath, "r") as database:
+            record = database.get(idx)
+            record = (record[()], dict(record.attrs))
+            _hbcurve, _attrs = self._transform(record, self._transformers)
 
         return (_hbcurve, _attrs)
 
@@ -152,7 +128,7 @@ class ASEDataset(Dataset):
         return key in self._samples
 
     @staticmethod
-    def _apply_transformer(record, transformers):
+    def _transform(record, transformers):
         if not isinstance(transformers, (list, tuple)):
             transformers = [transformers]
 
@@ -173,13 +149,14 @@ class ASEDataset(Dataset):
         else:
             raise KeyError()
 
-        for per_idx in idx:
-            record = self._database.get(per_idx)
-            record = (record[()], record.attrs)
-            if apply_trans:
-                yield self._apply_transformer(record, apply_trans)[pos]
-            else:
-                yield self._apply_transformer(record, self._transformers)[pos]
+        with h5.File(self._dbpath, "r") as database:
+            for per_idx in idx:
+                record = database.get(per_idx)
+                record = (record[()], dict(record.attrs))
+                if apply_trans:
+                    yield self._transform(record, apply_trans)[pos]
+                else:
+                    yield self._transform(record, self._transformers)[pos]
 
     @property
     def samples(self):

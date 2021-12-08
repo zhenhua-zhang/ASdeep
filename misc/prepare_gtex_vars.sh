@@ -11,12 +11,13 @@
 reqmem=32G
 reqcpus=1
 reqtime=7:59:59
+pj_dir=/groups/umcg-bios/tmp01/users/umcg-zzhang/projects/wp_ase_dlp
 
 sbatch --mem $reqmem \
     --time $reqtime \
     --cpus-per-task $reqcpus \
     --job-name gtex_genotype_qc \
-    --output %j.gtex_genotype_qc.log \
+    --output $pj_dir/outputs/haplotypes/%j.gtex_genotype_qc.log \
     <<'EOF'
 #!/bin/bash
 set -Ee -o pipefail
@@ -33,7 +34,7 @@ optdir=$projdir/outputs
 threads=${SLURM_CPUS_PER_TASK:-$(grep -c processor /proc/cpuinfo)}
 
 # Raw variants from GTEx
-raw_vars=$iptdir/GTEx/vcf/phASER_WASP_GTEx_v8_merged.vcf.gz
+raw_vars=$iptdir/GTEX/genotype/phASER_WASP_GTEx_v8_merged.vcf.gz
 
 
 #
@@ -95,7 +96,7 @@ java -jar $EBROOTPICARD/picard.jar LiftoverVcf \
 module purge && module load BCFtools/1.9-foss-2018a && module list
 
 # Input and output
-ref_vars=$iptdir/dbSNP/00-All.vcf.gz
+ref_vars=$HOME/Documents/projects/wp_reference/NCBI/vcf
 chosen_hq_nc_b37_annot_vars=${chosen_hq_nc_b37_vars}_annot.vcf.gz
 
 # Compress successfully liftovered varaints and generate index

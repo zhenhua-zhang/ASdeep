@@ -1,6 +1,9 @@
 """Infer allelic imbalance effects from allelic read counts using Bayesian inference."""
 
+import os
+import shutil
 import logging
+import tempfile
 import traceback
 from argparse import Namespace
 from collections import OrderedDict
@@ -63,9 +66,14 @@ class AllelicCounts:
         if exc_type is not None:
             traceback.print_exception(exc_type, exc_value, tb)
 
-        if self._vcf_recs.is_open(): self._vcf_recs.close()
-        if self._gtf_recs.is_open(): self._gtf_recs.close()
-        if self._bed_recs.is_open(): self._bed_recs.close()
+        if self._vcf_recs.is_open():
+            self._vcf_recs.close()
+
+        if self._gtf_recs.is_open():
+            self._gtf_recs.close()
+
+        if self._bed_recs.is_open():
+            self._bed_recs.close()
 
     @property
     def model(self):
@@ -95,20 +103,23 @@ class AllelicCounts:
                 for per_exon_rec in per_mrna_rec:
                     chrom, _, feature, start, end, *_ = per_exon_rec
 
-                    if feature != self._tar_feature: continue
+                    if feature != self._tar_feature:
+                        continue
 
                     region = f"{chrom}:{start}-{end}"
                     rcpool = self._bed_recs.subset(region=region).tabdict
                     variants = self._vcf_recs.subset(region=region).tabdict
 
                     for key, per_var in variants.items():
-                        if key not in rcpool: continue
+                        if key not in rcpool:
+                            continue
 
                         per_rc = rcpool[key]
                         chrom, pos, rsid, ref, alt, refrc, altrc, *_ = per_rc
                         _, _, _, _, _, is_phase, (a1_idx, a2_idx) = per_var
 
-                        if a1_idx == a2_idx: continue
+                        if a1_idx == a2_idx:
+                            continue
 
                         if is_phase:
                             birc = (refrc, altrc)
@@ -129,12 +140,25 @@ class AllelicCounts:
     def inferai(self, gene_id: list = None, mrna_id: list = None,
                 ab_sigma: float = 10, hdi_prob: float = None, **kwargs):
         """Infer allelic difference using MCMC."""
-        if "tune" not in kwargs: kwargs["tune"] = 500
-        if "draws" not in kwargs: kwargs["draws"] = 500
-        if "chains" not in kwargs: kwargs["chains"] = 2
-        if "cores" not in kwargs: kwargs["cores"] = kwargs["chains"]
-        if "progressbar" not in kwargs: kwargs["progressbar"] = False
-        if "random_seed" not in kwargs: kwargs["random_seed"] = 42
+
+        if "tune" not in kwargs:
+            kwargs["tune"] = 500
+
+        if "draws" not in kwargs:
+            kwargs["draws"] = 500
+
+        if "chains" not in kwargs:
+            kwargs["chains"] = 2
+
+        if "cores" not in kwargs:
+            kwargs["cores"] = kwargs["chains"]
+
+        if "progressbar" not in kwargs:
+            kwargs["progressbar"] = False
+
+        if "random_seed" not in kwargs:
+            kwargs["random_seed"] = 42
+
         if "return_inferencedata" not in kwargs:
             kwargs["return_inferencedata"] = True
 
@@ -210,7 +234,7 @@ def inferai(args: Namespace, logman: LogManager = LogManager("InferAI")):
     vcf_path = args.genetic_variants
     sample_id = args.sample_id
     tar_feature = args.feature
-    optfile = args.output_file
+    out_file = args.out_file
 
     logman.info(f"HDI              : {hdi_prob}")
     logman.info(f"N cpu            : {n_cpu}")
@@ -219,10 +243,15 @@ def inferai(args: Namespace, logman: LogManager = LogManager("InferAI")):
     logman.info(f"N chains         : {n_chain}")
     logman.info(f"Variants         : {vcf_path}")
     logman.info(f"Sample ID        : {sample_id}")
-    logman.info(f"Output file      : {optfile}")
+    logman.info(f"Output file      : {out_file}")
     logman.info(f"Genome region    : {gtf_path}")
     logman.info(f"Target features  : {tar_feature}")
     logman.info(f"Rreadcounts table: {bed_path}")
+
+    out_dir, _ = os.path.split(out_file)
+    out_dir = os.path.realpath(out_dir)
+    cache_path = tempfile.mkdtemp(prefix="theano-", dir=out_dir)
+    os.environ["THEANO_FLAGS"] = f"base_compiledir={cache_path}"
 
     with AllelicCounts(sample_id=sample_id,
                        vcf_path=vcf_path,
@@ -233,5 +262,7 @@ def inferai(args: Namespace, logman: LogManager = LogManager("InferAI")):
         (allelic_counts
          .fetch()
          .inferai(draws=n_draw, chains=n_chain, tune=n_tune, cores=n_cpu)
-         .save_to_dist(optfile))
+         .save_to_dist(out_file))
 
+    # Clean-up the cache path
+    shutil.rmtree(cache_path, ignore_errors=True)

@@ -2,13 +2,12 @@
 # E-mail : zhenhua.zhang217@gmail.com
 # Created: May 07, 2020
 # Updated: Oct 06, 2021
-"""A module to train a convolutionary neural network."""
+"""A module to train a convolutional neural network."""
 
 import sys
 import traceback
 from argparse import Namespace
 
-import h5py as h5
 import numpy as np
 from sklearn.model_selection import train_test_split as ttsplit
 from sklearn.metrics import accuracy_score
@@ -26,6 +25,7 @@ from torch.utils.data import Subset
 from torch.utils.tensorboard import SummaryWriter
 
 from .dataset import SubsetHilbertCurve
+from .dataset import MaskHomoSites
 from .dataset import XyTransformer
 from .dataset import ASEDataset
 from .zutils import LogManager
@@ -160,10 +160,9 @@ class Trainer:
     def _train(self, n_epoch, optimer, criterion, splits, batch_size, shuffle,
                log_per_n_epoch=5):
         # import pdb; pdb.set_trace()
-        hline = "{: >6},{: >5},{: >9},{: >9},{: >9},{: >9},{: >9}".format(
-            "Act.", "Epo.", "Acc.", "Pre.", "Rec.", "ROCAUC", "Loss")
+        fileds = ["Opt.", "Epoch", "Accur.", "Preci.", "Recall", "ROCAUC", "Loss"]
+        header = "{: >6},{: >5},{: >9},{: >9},{: >9},{: >9},{: >9}".format(*fileds)
         self._logman.info("---- Training reports ----")
-        self._logman.info(hline)
         train_idx, test_idx = splits
         trainloader = DataLoader(Subset(self._dataset, train_idx),
                                  batch_size=batch_size,
@@ -179,19 +178,20 @@ class Trainer:
         tn_fpr, tn_tpr, tt_fpr, tt_tpr = None, None, None, None
         for epoch in range(1, n_epoch + 1):
             inputs = None
-            running_loss = 0.0
+            train_loss = 0.0
             tn_y_true, tn_y_pred, tn_y_score = [], [], None
 
             for _, data in enumerate(trainloader):
                 matrix, label = data
+                # import pdb; pdb.set_trace()
                 inputs = matrix.type(self.input_type).to(self.device) # inputs
                 y_true = label.to(self.device) # true label
 
                 outputs = self._model(inputs) # Forward propagation
-                train_loss = criterion(outputs, y_true) # Calculate loss
+                batch_loss = criterion(outputs, y_true) # Calculate loss
 
                 optimer.zero_grad()   # Reset parameter gradients
-                train_loss.backward() # Backpropagate prediction loss
+                batch_loss.backward() # Backpropagate prediction loss
                 optimer.step()        # Adjust model parameters
 
                 _, y_pred = torch.max(outputs.data, 1)
@@ -203,13 +203,16 @@ class Trainer:
                 else:
                     tn_y_score = torch.cat((tn_y_score, outputs.data.to("cpu")))
 
-                running_loss += train_loss.item()
+                train_loss += batch_loss.item()
 
             if inputs is not None and epoch == 1:
                 self._writer.add_graph(self._model, inputs)
 
             # Log the evaluations per log_per_n_epoch.
-            if epoch % log_per_n_epoch == 0:
+            if epoch == 1:
+                self._logman.info(header)
+
+            if epoch % log_per_n_epoch == 0 or epoch == 1:
                 # Get training evaluations
                 tn_fpr, tn_tpr, tn_rauc, tn_pre, tn_rcl, tn_acc \
                         = self._eval_matrix(tn_y_true, tn_y_pred, tn_y_score)
@@ -219,9 +222,9 @@ class Trainer:
                 self._writer.add_scalar("Precision/Train", tn_pre, epoch)
                 self._writer.add_scalar("Accuracy/Train", tn_acc, epoch)
                 self._writer.add_scalar("Recall/Train", tn_rcl, epoch)
-                self._writer.add_scalar("Loss/Train", running_loss, epoch)
+                self._writer.add_scalar("Loss/Train", train_loss, epoch)
                 self._logman.info(fm.format("Train", epoch, tn_acc, tn_pre,
-                                            tn_rcl, tn_rauc, running_loss))
+                                            tn_rcl, tn_rauc, train_loss))
 
                 # Test
                 tt_y_true, tt_y_pred, tt_y_score, test_loss \
@@ -239,7 +242,8 @@ class Trainer:
                 self._writer.add_scalar("Loss/Test", test_loss, epoch)
                 self._logman.info(fm.format("Test", epoch, tt_acc, tt_pre,
                                             tt_rcl, tt_rauc, test_loss))
-            epoch_loss_list.append(running_loss)
+
+            epoch_loss_list.append(train_loss)
 
         self._add_roc_curve(tn_fpr, tn_tpr, "Train")
         self._add_roc_curve(tt_fpr, tt_tpr, "Test")
@@ -331,21 +335,20 @@ def train(args: Namespace, logman: LogManager = LogManager("Train")):
     torch.backends.cudnn.deterministic = True
 
     logman.info("---- Training parameters ----")
-    logman.info(f"CPU counts:    {n_cpus}")
-    logman.info(f"Batch size:    {batch_size}")
-    logman.info(f"Random state:  {random_state}")
-    logman.info(f"Epoch number:  {epoches}")
-    logman.info(f"Architecture:  {prebuilt_arch}")
-    logman.info(f"N base pairs:  {n_base_pairs}")
-    logman.info(f"Training prop: {train_pp}")
-    logman.info(f"Learning rate: {learning_rate}")
+    logman.info(f"CPU counts:      {n_cpus}")
+    logman.info(f"Batch size:      {batch_size}")
+    logman.info(f"Random state:    {random_state}")
+    logman.info(f"Epoch number:    {epoches}")
+    logman.info(f"Architecture:    {prebuilt_arch}")
+    logman.info(f"N base pairs:    {n_base_pairs}")
+    logman.info(f"Training prop:   {train_pp}")
+    logman.info(f"Learning rate:   {learning_rate}")
 
-    trans = [SubsetHilbertCurve(n_base_pairs), XyTransformer()]
+    trans = [SubsetHilbertCurve(n_base_pairs), MaskHomoSites(), XyTransformer()]
     net = pickup_model(prebuilt_arch)
-    with h5.File(database, "r") as h5db:
-        dataset = ASEDataset(database=h5db, transformers=trans, n_cpus=n_cpus)
-        with Trainer(net, dataset, log_output, log_n_epoch, n_cpus) as trainer:
-            (trainer.split_train_test(train_pp)
-             .train(epoches, learning_rate=learning_rate,
-                    batch_size=batch_size)
-             .save_model(model_state_path, arch=prebuilt_arch))
+    dataset = ASEDataset(dbpath=database, transformers=trans)
+    with Trainer(net, dataset, log_output, log_n_epoch, n_cpus) as trainer:
+        (trainer.split_train_test(train_pp)
+         .train(epoches, learning_rate=learning_rate,
+                batch_size=batch_size)
+         .save_model(model_state_path, arch=prebuilt_arch))

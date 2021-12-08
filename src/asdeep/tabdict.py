@@ -5,6 +5,7 @@ from collections import OrderedDict
 from pysam.libcbcf import VariantFile
 from pysam.libctabix import TabixFile, asBed, asGTF, asGFF3
 
+
 class CSVDict(csv.DictReader):
     def __init__(self, csvfile, idx_col=0, row_key_tran=None, **kwargs):
         self._row_key_tran = row_key_tran
@@ -150,7 +151,12 @@ class TabDict(TabixFile):
         if "parser" in kwargs:
             self._parser = kwargs["parser"]
 
-        self._rec_iters = self.fetch(**kwargs)
+        # ValueError raises because genomic regions are not in the index file.
+        try:
+            self._rec_iters = self.fetch(**kwargs)
+        except ValueError as _:
+            self._rec_iters = []
+
         return self
 
 
@@ -197,16 +203,14 @@ class GTFDict(TabDict):
             else:
                 key, val = [x.strip() for x in per_field.split(" ", 1)]
 
-            if val[0] == '"' and val[1] == '"':
-                val = val[1:-1]
-            else:
-                try:
-                    val = float(val)
-                    val = int(val)
-                except ValueError:
-                    pass
-                except TypeError:
-                    pass
+            val = val.strip(" \"")
+            try:
+                val = float(val)
+                val = int(val)
+            except ValueError:
+                pass
+            except TypeError:
+                pass
 
             yield key, val
 
@@ -222,7 +226,8 @@ class GTFDict(TabDict):
             gene_id = attr_dict.get(self._gene_id, None)
             mrna_id = attr_dict.get(self._transcript_id, None)
 
-            if mrna_id is None: continue
+            if mrna_id is None:
+                continue
 
             rec_tuple = (seqname,
                          self._try_to_dot(source),
@@ -246,7 +251,8 @@ class GTFDict(TabDict):
 
     @staticmethod
     def _try_to_dot(x):
-        if x is None: return "."
+        if x is None:
+            return "."
         else:
             try:
                 return int(x)
@@ -287,9 +293,10 @@ class VCFDict:
             chrom, pos, rsid = per_rec.chrom, per_rec.pos, per_rec.id
             ref, alts = per_rec.ref, per_rec.alts
 
-            if len(alts) != 1: continue
-            alt = alts[0]
+            if len(alts) != 1:
+                continue
 
+            alt = alts[0]
             sample = per_rec.samples.get(sample_id)
             phased = True if sample.phased else False
             genotype = sample.get("GT", None)
