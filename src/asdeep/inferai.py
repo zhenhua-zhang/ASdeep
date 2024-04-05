@@ -12,6 +12,10 @@ import arviz as az
 import pymc3 as pm
 from pysam.libctabix import asBed, asTuple
 
+import torch
+import pyro
+from pyro.nn import PyroModule
+
 from .zutils import LogManager
 from .tabdict import BEDDict
 from .tabdict import GTFDict
@@ -23,12 +27,14 @@ logger.propagate = False
 logger.setLevel(logging.ERROR)
 
 
+class BetaBinomialModel(PyroModule):
+    def __init__(self):
+        pass
+
+
 class AllelicCounts:
     """A class to handling allelic read counts."""
-    def __init__(self, sample_id: str, vcf_path: str, gtf_path: str,
-                 bed_path: str, threads: int = 4, tar_feature: str = "exon",
-                 hdi_prob: float = 0.90,
-                 logman: LogManager = LogManager("RCPool")):
+    def __init__(self, sample_id: str, vcf_path: str, gtf_path: str, bed_path: str, threads: int = 4, tar_feature: str = "exon", hdi_prob: float = 0.90, logman: LogManager = LogManager("RCPool")):
         self._logman = logman
         self._sample_id = sample_id
         self._tar_feature = tar_feature
@@ -36,12 +42,9 @@ class AllelicCounts:
         self._ai_summary: list = []
         self._mrna_id: list = []
 
-        self._vcf_recs = VCFDict(vcf_path, mode="r", sample_id=sample_id,
-                                 threads=threads)
-        self._gtf_recs = GTFDict(gtf_path, mode="r", parser=asTuple(),
-                                 threads=threads)
-        self._bed_recs = BEDDict(bed_path, mode="r", parser=asBed(),
-                                 threads=threads)
+        self._vcf_recs = VCFDict(vcf_path, mode="r", sample_id=sample_id, threads=threads)
+        self._gtf_recs = GTFDict(gtf_path, mode="r", parser=asTuple(), threads=threads)
+        self._bed_recs = BEDDict(bed_path, mode="r", parser=asBed(), threads=threads)
 
         self._hdi_prob = hdi_prob
 
@@ -137,8 +140,7 @@ class AllelicCounts:
 
         return self
 
-    def inferai(self, gene_id: list = None, mrna_id: list = None,
-                ab_sigma: float = 10, hdi_prob: float = None, **kwargs):
+    def inferai(self, gene_id: list = None, mrna_id: list = None, ab_sigma: float = 10, hdi_prob: float = None, **kwargs):
         """Infer allelic difference using MCMC."""
 
         if "tune" not in kwargs:
@@ -201,17 +203,14 @@ class AllelicCounts:
 
             ai_summary = az.summary(self._trace, hdi_prob=self._hdi_prob)
             mean, sd, hdi_lower, hdi_upper = ai_summary.iloc[-1, :4]
-            self._ai_summary.append((per_gene_id, per_mrna_id, mean, sd,
-                                     hdi_lower, hdi_upper, obs_data))
+            self._ai_summary.append((per_gene_id, per_mrna_id, mean, sd, hdi_lower, hdi_upper, obs_data))
 
         return self
 
     def save_to_dist(self, fpath: str, sep=","):
         lower_bound = (1 - self._hdi_prob) / 2
         upper_bound = 1 - lower_bound
-        header = sep.join(["gene_id", "mrna_id", "mean", "sd",
-                           f"hdi_{lower_bound:.3}",
-                           f"hdi_{upper_bound:.3}", "evidence"])
+        header = sep.join(["gene_id", "mrna_id", "mean", "sd", f"hdi_{lower_bound:.3}", f"hdi_{upper_bound:.3}", "evidence"])
 
         with open(fpath, "w") as fhandle:
             fhandle.write(header + "\n")
@@ -253,16 +252,8 @@ def inferai(args: Namespace, logman: LogManager = LogManager("InferAI")):
     cache_path = tempfile.mkdtemp(prefix="theano-", dir=out_dir)
     os.environ["THEANO_FLAGS"] = f"base_compiledir={cache_path}"
 
-    with AllelicCounts(sample_id=sample_id,
-                       vcf_path=vcf_path,
-                       gtf_path=gtf_path,
-                       bed_path=bed_path,
-                       tar_feature=tar_feature,
-                       hdi_prob=hdi_prob) as allelic_counts:
-        (allelic_counts
-         .fetch()
-         .inferai(draws=n_draw, chains=n_chain, tune=n_tune, cores=n_cpu)
-         .save_to_dist(out_file))
+    with AllelicCounts(sample_id, vcf_path, gtf_path, bed_path, n_cpu, tar_feature, hdi_prob) as allelic_counts:
+        allelic_counts.fetch().inferai(draws=n_draw, chains=n_chain, tune=n_tune, cores=n_cpu).save_to_dist(out_file)
 
     # Clean-up the cache path
     shutil.rmtree(cache_path, ignore_errors=True)

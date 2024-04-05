@@ -97,5 +97,5 @@ correctly in your system.
 If you have issue or question, please create a new issue or send an email to
 the following address.
 
-Zhenhua Zhang <zhenhua.zhang217@gmail.com
+Zhenhua Zhang <zhenhua.zhang217@gmail.com>
 

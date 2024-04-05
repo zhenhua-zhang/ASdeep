@@ -51,17 +51,14 @@ class CSVDict(csv.DictReader):
                 if idx_col >= 0:
                     col_key, row_key = list(record.items())[idx_col]
             elif isinstance(idx_col, (list, tuple)):
-                rc_key = [r for i, r in enumerate(record.items())
-                          if i in idx_col]
+                rc_key = [r for i, r in enumerate(record.items()) if i in idx_col]
                 col_key = tuple([key[0] for key in rc_key])
                 row_key = tuple([key[1] for key in rc_key])
 
                 if isinstance(self._row_key_tran, (tuple, list)):
                     if len(self._row_key_tran) != len(row_key):
-                        raise ValueError("row_key_tran functions should match"
-                                         " row_key one by one")
-                    row_key = [t(k) if callable(t) else k
-                               for t, k in zip(self._row_key_tran, row_key)]
+                        raise ValueError("row_key_tran functions should match row_key one by one")
+                    row_key = [t(k) if callable(t) else k for t, k in zip(self._row_key_tran, row_key)]
                     row_key = tuple(row_key)
             else:
                 raise TypeError(f"Unsupported key type: {type(idx_col)}")
@@ -83,9 +80,7 @@ class CSVDict(csv.DictReader):
                 _colkeys = list(record.keys())
             _rowkeys.append(row_key)
 
-        self._metadict = _metadict
-        self._colkeys = _colkeys
-        self._rowkeys = _rowkeys
+        self._metadict, self._colkeys, self._rowkeys = _metadict, _colkeys, _rowkeys
 
     @property
     def csv_handler(self):
@@ -104,7 +99,7 @@ class CSVDict(csv.DictReader):
         return self._colkeys
 
     def close(self):
-        if not self._csv_handler.closed:
+        if self._csv_handler and not self._csv_handler.closed:
             self._csv_handler.close()
 
 
@@ -128,8 +123,7 @@ class TabDict(TabixFile):
             self.close()
 
     def _make_dict(self):
-        raise NotImplementedError("The hiden method should be implemented "
-                                  "accordingly.")
+        raise NotImplementedError("The hiden method should be implemented accordingly.")
 
     @property
     def is_bed(self):
@@ -170,8 +164,7 @@ class BEDDict(TabDict):
             chrom, _, pos = per_rec.contig, per_rec.start, per_rec.end
             rsid, ref, alt, refrc, altrc, allrc, *oth = per_rec.name.split(";")
             key = (chrom, pos, ref, alt)
-            bed_dict[key] = (chrom, pos, rsid, ref, alt, int(refrc),
-                             int(altrc), int(allrc), oth)
+            bed_dict[key] = (chrom, pos, rsid, ref, alt, int(refrc), int(altrc), int(allrc), oth)
 
         return bed_dict
 
